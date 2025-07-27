@@ -1,5 +1,6 @@
 import requests
 from SPARQLWrapper import SPARQLWrapper, JSON
+import time
 
 
 def get_name_and_aliases(entity_id):
@@ -69,6 +70,29 @@ def get_all_us_legislator_qids():
     bindings = results["results"]["bindings"]
     qids = [result["person"]["value"].split("/")[-1] for result in bindings]
     return qids
+
+
+def get_all_names_with_aliases(qids):
+    """
+    Retrieves the names and aliases and returns them in a dictionary keyed by
+    their Wikidata QIDs.
+
+    Args:
+        qids (str): Wikidata QID of each person
+
+    Returns:
+        dict: A dictionary of the form { QID: { "name": , "aliases": [] }, }
+    """
+    data = {}
+
+    # Iterate over each QID and fetch their name and aliases
+    for qid in qids:
+        info = get_name_and_aliases(qid)
+        if info:
+            data[qid] = info
+        time.sleep(0.5)  # Respect Wikidata's rate limits
+
+    return data
 
 
 if __name__ == "__main__":
