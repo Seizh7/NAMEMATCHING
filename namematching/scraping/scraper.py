@@ -1,6 +1,7 @@
 import requests
 from SPARQLWrapper import SPARQLWrapper, JSON
 import time
+from utils import normalize_name
 
 
 def get_name_and_aliases(entity_id):
@@ -35,9 +36,13 @@ def get_name_and_aliases(entity_id):
     aliases = entity.get("aliases", {}).get("en", [])
     alias_list = [alias["value"] for alias in aliases]
 
+    # Normalize name and aliases
+    normalized_label = normalize_name(label)
+    normalized_aliases = [normalize_name(alias) for alias in alias_list]
+
     return {
-        "name": label,
-        "aliases": alias_list
+        "name": normalized_label,
+        "aliases": normalized_aliases
     }
 
 
