@@ -1,7 +1,7 @@
 import requests
-from SPARQLWrapper import SPARQLWrapper, JSON
 import time
-from utils import normalize_name
+import utils
+from SPARQLWrapper import SPARQLWrapper, JSON
 
 
 def get_name_and_aliases(entity_id):
@@ -37,8 +37,8 @@ def get_name_and_aliases(entity_id):
     alias_list = [alias["value"] for alias in aliases]
 
     # Normalize name and aliases
-    normalized_label = normalize_name(label)
-    normalized_aliases = [normalize_name(alias) for alias in alias_list]
+    normalized_label = utils.normalize_name(label)
+    normalized_aliases = [utils.normalize_name(alias) for alias in alias_list]
 
     return {
         "name": normalized_label,
@@ -77,25 +77,54 @@ def get_all_us_legislator_qids():
     return qids
 
 
-def get_all_names_with_aliases(qids):
+def process_batch(batch, data):
     """
-    Retrieves the names and aliases and returns them in a dictionary keyed by
-    their Wikidata QIDs.
+    Processes a batch of QIDs by retrieving their names and aliases.
 
     Args:
-        qids (str): Wikidata QID of each person
+        batch (list): List of Wikidata QIDs to process.
+        data (dict): Existing data dictionary to update.
 
     Returns:
-        dict: A dictionary of the form { QID: { "name": , "aliases": [] }, }
+        dict: Updated data dictionary with new QID entries.
     """
-    data = {}
+    for qid in batch:
+        if qid in data:
+            continue  # Skip already processed QIDs
 
-    # Iterate over each QID and fetch their name and aliases
-    for qid in qids:
         info = get_name_and_aliases(qid)
         if info:
             data[qid] = info
-        time.sleep(0.5)  # Respect Wikidata's rate limits
+
+        time.sleep(0.5)  # Respect Wikidata rate limits
+
+    return data
+
+
+def get_all_names_with_aliases(qids, output_path, batch_size=10):
+    """
+    Retrieves names and aliases for a list of QIDs in batches,
+    saving progress incrementally to a JSON file.
+
+    Args:
+        qids (list): List of Wikidata QIDs to process.
+        output_path (str): Path to the output JSON file.
+        batch_size (int): Number of QIDs to process per batch.
+
+    Returns:
+        dict: Dictionary of QID → name/aliases data.
+    """
+    # Load existing data if available to avoid re-processing
+    data = utils.load_json(output_path)
+    total = len(qids)
+
+    for i in range(0, total, batch_size):
+        batch = qids[i:i + batch_size]
+        data = process_batch(batch, data)
+
+        # Save progress to disk after each batch
+        utils.save_json(output_path, data)
+        print(f"Batch {i // batch_size + 1} saved ({len(data)}/{len(qids)})")
 
     return data
 
