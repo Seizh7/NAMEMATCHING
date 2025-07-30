@@ -73,6 +73,24 @@ def generate_negative_pairs(qid, data, n_pairs=3):
     return negative_pairs
 
 
+def generate_pairs(qid, data, n_negatives=3):
+    """
+    Generates both positive and negative pairs for a given person.
+
+    Args:
+        qid (str): The QID of the person.
+        person (dict): A dict with keys "name" and "aliases".
+        data (dict): Full dataset.
+        n_negatives (int): Number of negative pairs per person.
+
+    Returns:
+        list[dict]: A list of pair dictionaries (positive + negative).
+    """
+    positive = generate_positive_pairs(qid, data)
+    negative = generate_negative_pairs(qid, data, n_pairs=n_negatives)
+    return positive + negative
+
+
 if __name__ == "__main__":
     data = utils.load_json("data/test.json")
     name = data["Q109463"]["name"]
