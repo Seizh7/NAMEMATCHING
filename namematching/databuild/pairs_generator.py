@@ -1,5 +1,6 @@
 from itertools import combinations
 import utils
+import random
 
 
 def generate_positive_pairs(qid, data):
@@ -35,9 +36,49 @@ def generate_positive_pairs(qid, data):
     return labeled_pairs
 
 
+def generate_negative_pairs(qid, data, n_pairs=3):
+    """
+    Generates negative name pairs for a given person,
+    by pairing their name with names from other individuals.
+
+    Args:
+        qid (str): The Wikidata QID of the person.
+        data (dict): Dictionary of people with their names and aliases.
+        n_pairs (int): Number of negative pairs to generate for this person.
+
+    Returns:
+        list[dict]: List of negative name pairs
+    """
+    # Build the list of QIDs excluding the current one
+    all_qids = list(data.keys())
+    other_qids = [other for other in all_qids if other != qid]
+
+    # Sample up to n_pairs other individuals
+    selected_qids = random.sample(other_qids, k=n_pairs)
+
+    name1 = data[qid]["name"]
+
+    negative_pairs = []
+    for other_qid in selected_qids:
+        name2 = data[other_qid]["name"]
+
+        # Skip accidental name duplicates
+        if name1 != name2:
+            negative_pairs.append({
+                "name1": name1,
+                "name2": name2,
+                "label": 0
+            })
+
+    return negative_pairs
+
+
 if __name__ == "__main__":
     data = utils.load_json("data/test.json")
     name = data["Q109463"]["name"]
     aliases = data["Q109463"]["aliases"]
     pos = generate_positive_pairs("Q109463", data)
     print(f"positive pair(s): {pos}")
+
+    neg = generate_negative_pairs("Q109463", data, n_pairs=2)
+    print(f"negative pair(s): {neg}")
