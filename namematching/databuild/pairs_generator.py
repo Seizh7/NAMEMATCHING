@@ -1,6 +1,9 @@
 from itertools import combinations
 import utils
 import random
+import pandas as pd
+import os
+import csv
 
 
 def generate_positive_pairs(qid, data):
@@ -89,6 +92,78 @@ def generate_pairs(qid, data, n_negatives=3):
     positive = generate_positive_pairs(qid, data)
     negative = generate_negative_pairs(qid, data, n_pairs=n_negatives)
     return positive + negative
+
+
+def init_csv(path):
+    """
+    Initializes the output CSV file with the appropriate header.
+
+    Args:
+        path (str): Path to the CSV file.
+
+    Returns:
+        None
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, mode="w", newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=["name1", "name2", "label"])
+        writer.writeheader()
+
+
+def write_batch_to_csv(batch, output_path):
+    """
+    Writes a batch of name pairs to the CSV file.
+
+    Args:
+        batch (list): List of dictionaries.
+        output_path (str): Path to the output file.
+
+    Returns:
+        None
+    """
+    df = pd.DataFrame(batch)
+    df.to_csv(
+        output_path,
+        mode="a",
+        index=False,
+        header=False,
+        encoding="utf-8"
+    )
+
+
+def generate_and_save_pairs(
+    data,
+    output_path,
+    batch_size=50,
+    n_negatives=3,
+):
+    """
+    Generates name pairs for all individuals in the dataset and writes them to
+    CSV in batches.
+
+    Args:
+        data (dict): Full dataset
+        output_path (str): Output CSV path.
+        batch_size (int): Number of individuals per batch.
+        n_negatives (int): Number of negative pairs to generate per individual.
+
+    Returns:
+        None
+    """
+    init_csv(output_path)
+
+    batch = []
+    qids = list(data.keys())
+
+    for i, qid in enumerate(qids):
+        pairs = generate_pairs(qid, data, n_negatives)
+        batch.extend(pairs)
+
+        # Write every `batch_size` or at the end
+        if (i + 1) % batch_size == 0 or (i + 1) == len(qids):
+            print(f"Batch {i // batch_size + 1} saved ({(i + 1)}/{len(qids)})")
+            write_batch_to_csv(batch, output_path)
+            batch = []
 
 
 if __name__ == "__main__":
