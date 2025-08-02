@@ -72,7 +72,9 @@ def generate_negative_pairs(qid, data, n_positives):
     negative_pairs = []
 
     for other_qid in selected_qids:
-        name2 = data[other_qid]["name"]
+        name2 = data[other_qid].get("name", "").strip()
+        if not name2:
+            continue  # skip if name2 is missing or empty
 
         # Create negatives pairs
         for _ in range(len(names1_list)):  # prevent infinite loop
