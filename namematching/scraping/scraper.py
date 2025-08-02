@@ -4,19 +4,16 @@ import utils
 from SPARQLWrapper import SPARQLWrapper, JSON
 
 
-def get_name_and_aliases(entity_id):
+def get_name_and_aliases(entity_id, langs=["en", "fr", "de"]):
     """
     Retrieves the English label and aliases of a Wikidata entity.
 
     Args:
         entity_id (str): The Wikidata entity
+        langs (str): Choosen language for the label
 
     Returns:
         dict: A dictionary containing the entity's name and a list of aliases.
-              {
-                  "name": <label>,
-                  "aliases": [<alias_1>, <alias_2>, ...]
-              }
     """
     url = f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json"
 
@@ -30,7 +27,11 @@ def get_name_and_aliases(entity_id):
     entity = data["entities"][entity_id]
 
     # Extract the English label (main name)
-    label = entity.get("labels", {}).get("en", {}).get("value", "")
+    label = ""
+    for lang in langs:
+        if lang in entity.get("labels", {}):
+            label = entity["labels"][lang]["value"]
+            break
 
     # Extract English aliases
     aliases = entity.get("aliases", {}).get("en", [])
@@ -131,6 +132,6 @@ def get_all_names_with_aliases(qids, output_path, batch_size=10):
 
 if __name__ == "__main__":
     # Example
-    result = get_name_and_aliases("Q355522")
+    result = get_name_and_aliases("Q501919")
     print(result)
-    print(get_all_us_legislator_qids())
+    #print(get_all_us_legislator_qids())
