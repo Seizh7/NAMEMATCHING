@@ -1,4 +1,4 @@
-from itertools import combinations
+from itertools import combinations, cycle
 import utils
 import random
 import pandas as pd
@@ -39,44 +39,56 @@ def generate_positive_pairs(qid, data):
     return labeled_pairs
 
 
-def generate_negative_pairs(qid, data, n_pairs=3):
+def generate_negative_pairs(qid, data, n_positives):
     """
-    Generates negative name pairs for a given person,
-    by pairing their name with names from other individuals.
+    Generates negative name pairs (label = 0) for a given person,
+    by pairing their name (or aliases) with names from other individuals.
 
     Args:
         qid (str): The Wikidata QID of the person.
         data (dict): Dictionary of people with their names and aliases.
-        n_pairs (int): Number of negative pairs to generate for this person.
+        n_positives (int): Number of positive pairs generated for this person.
 
     Returns:
-        list[dict]: List of negative name pairs
+        list[dict]: A list of negative name pairs.
     """
-    # Build the list of QIDs excluding the current one
+    # Get all QIDs except the current one
     all_qids = list(data.keys())
     other_qids = [other for other in all_qids if other != qid]
 
-    # Sample up to n_pairs other individuals
-    selected_qids = random.sample(other_qids, k=n_pairs)
+    names1_list = [data[qid]["name"]] + data[qid].get("aliases", [])
+    names1_cycle = cycle(names1_list)
 
-    name1 = data[qid]["name"]
+    # Determine how many negatives to generate
+    n_negatives = max(n_positives, len(names1_list))
+    if n_negatives == 0:
+        n_negatives = 1  # ensure at least one negative pair
+
+    n_negatives = min(n_negatives, len(other_qids))
+
+    # Randomly sample other people to pair against
+    selected_qids = random.sample(other_qids, k=n_negatives)
 
     negative_pairs = []
+
     for other_qid in selected_qids:
         name2 = data[other_qid]["name"]
 
-        # Skip accidental name duplicates
-        if name1 != name2:
-            negative_pairs.append({
-                "name1": name1,
-                "name2": name2,
-                "label": 0
-            })
+        # Create negatives pairs
+        for _ in range(len(names1_list)):  # prevent infinite loop
+            name1 = next(names1_cycle)
+            if name1 != name2:
+                negative_pairs.append({
+                    "name1": name1,
+                    "name2": name2,
+                    "label": 0
+                })
+                break  # move to the next other_qid
 
     return negative_pairs
 
 
-def generate_pairs(qid, data, n_negatives=3):
+def generate_pairs(qid, data):
     """
     Generates both positive and negative pairs for a given person.
 
@@ -90,7 +102,7 @@ def generate_pairs(qid, data, n_negatives=3):
         list[dict]: A list of pair dictionaries (positive + negative).
     """
     positive = generate_positive_pairs(qid, data)
-    negative = generate_negative_pairs(qid, data, n_pairs=n_negatives)
+    negative = generate_negative_pairs(qid, data, len(positive))
     return positive + negative
 
 
@@ -135,7 +147,6 @@ def generate_and_save_pairs(
     data,
     output_path,
     batch_size=50,
-    n_negatives=3,
 ):
     """
     Generates name pairs for all individuals in the dataset and writes them to
@@ -156,7 +167,7 @@ def generate_and_save_pairs(
     qids = list(data.keys())
 
     for i, qid in enumerate(qids):
-        pairs = generate_pairs(qid, data, n_negatives)
+        pairs = generate_pairs(qid, data)
         batch.extend(pairs)
 
         # Write every `batch_size` or at the end
@@ -173,5 +184,5 @@ if __name__ == "__main__":
     pos = generate_positive_pairs("Q109463", data)
     print(f"positive pair(s): {pos}")
 
-    neg = generate_negative_pairs("Q109463", data, n_pairs=2)
+    neg = generate_negative_pairs("Q109463", data, len(pos))
     print(f"negative pair(s): {neg}")
