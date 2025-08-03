@@ -62,11 +62,26 @@ def longest_common_substring(name1, name2):
     return max_len / max_len_name if max_len_name > 0 else 0
 
 
+def startswith_same(name1, name2):
+    """
+    Returns 1 if both names start with the same word, else 0.
+    """
+    return int(name1.split()[0] == name2.split()[0])
+
+
+def endswith_same(name1, name2):
+    """
+    Returns 1 if both names end with the same word, else 0.
+    """
+    return int(name1.split()[-1] == name2.split()[-1])
+
+
 if __name__ == "__main__":
     name1 = "joe biden"
     name2 = "joseph biden"
     name3 = "joseph robinette biden"
 
+    # Jaccard index
     jaccard_index1 = jaccard(name1, name2)
     jaccard_index2 = jaccard(name1, name3)
     jaccard_index3 = jaccard(name2, name3)
@@ -74,9 +89,26 @@ if __name__ == "__main__":
     print(f"Jaccard index score between {name1} - {name3} : {jaccard_index2}")
     print(f"Jaccard index score between {name2} - {name3} : {jaccard_index3}")
 
+    # Longest common substring
     lcsubstr1 = longest_common_substring(name1, name2)
     lcsubstr2 = longest_common_substring(name1, name3)
     lcsubstr3 = longest_common_substring(name2, name3)
     print(f"Longest common substring for {name1} - {name2} : {lcsubstr1}")
     print(f"Longest common substring for {name1} - {name3} : {lcsubstr2}")
     print(f"Longest common substring for {name2} - {name3} : {lcsubstr3}")
+
+    # Startswith same
+    start1 = startswith_same(name1, name2)
+    start2 = startswith_same(name1, name3)
+    start3 = startswith_same(name2, name3)
+    print(f"Startswith same for {name1} - {name2} : {start1}")
+    print(f"Startswith same for {name1} - {name3} : {start2}")
+    print(f"Startswith same for {name2} - {name3} : {start3}")
+
+    # Endswith same
+    end1 = endswith_same(name1, name2)
+    end2 = endswith_same(name1, name3)
+    end3 = endswith_same(name2, name3)
+    print(f"Endswith same for {name1} - {name2} : {end1}")
+    print(f"Endswith same for {name1} - {name3} : {end2}")
+    print(f"Endswith same for {name2} - {name3} : {end3}")
