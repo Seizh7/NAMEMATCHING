@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def jaccard(name1, name2):
     """
     Computes Jaccard similarity between two strings.
@@ -76,6 +79,44 @@ def endswith_same(name1, name2):
     return int(name1.split()[-1] == name2.split()[-1])
 
 
+def compute_features(batch):
+    """
+    Compute similarity features on a batch of name pairs.
+
+    Args:
+        batch (pd.DataFrame): A chunk of the full CSV.
+
+    Returns:
+        pd.DataFrame: The same batch with new feature columns added.
+    """
+
+    # Compute longest common substring similarity
+    batch["lcsubstr"] = batch.apply(
+        lambda x: longest_common_substring(x["name1"], x["name2"]),
+        axis=1
+    )
+
+    # Compute Jaccard similarity
+    batch["jaccard"] = batch.apply(
+        lambda x: jaccard(x["name1"], x["name2"]),
+        axis=1
+    )
+
+    # Same starting word
+    batch["startswith_same"] = batch.apply(
+        lambda x: startswith_same(x["name1"], x["name2"]),
+        axis=1
+    )
+
+    # Same ending word
+    batch["endswith_same"] = batch.apply(
+        lambda x: endswith_same(x["name1"], x["name2"]),
+        axis=1
+    )
+
+    return batch
+
+
 if __name__ == "__main__":
     name1 = "joe biden"
     name2 = "joseph biden"
@@ -112,3 +153,17 @@ if __name__ == "__main__":
     print(f"Endswith same for {name1} - {name2} : {end1}")
     print(f"Endswith same for {name1} - {name3} : {end2}")
     print(f"Endswith same for {name2} - {name3} : {end3}")
+
+    data = [
+        {"name1": "joe biden", "name2": "joseph biden"},
+        {"name1": "joe biden", "name2": "joseph robinette biden"},
+        {"name1": "joseph biden", "name2": "joseph robinette biden"},
+        {"name1": "barack obama", "name2": "barack h obama"},
+        {"name1": "donald trump", "name2": "donald j trump"},
+        {"name1": "joe biden", "name2": "barack obama"},
+    ]
+
+    test_df = pd.DataFrame(data)
+    features_df = compute_features(test_df)
+
+    print(f"{features_df}")
