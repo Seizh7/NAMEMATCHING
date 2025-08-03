@@ -89,6 +89,33 @@ def compute_features(batch):
     Returns:
         pd.DataFrame: The same batch with new feature columns added.
     """
+    # Compute Jaro similarity (character-level)
+    batch["jaro"] = batch.apply(
+        lambda x: td.jaro.normalized_similarity(x["name1"], x["name2"]),
+        axis=1
+    )
+
+    # Compute Jaro-Winkler similarity
+    batch["jaro_winkler"] = batch.apply(
+        lambda x: td.jaro_winkler.normalized_similarity(
+            x["name1"], x["name2"]
+        ),
+        axis=1
+    )
+
+    # Compute Fuzzy ratio with error tracing
+    fuzz_scores = []
+    for i, row in batch.iterrows():
+        try:
+            name1 = str(row["name1"])
+            name2 = str(row["name2"])
+            score = fuzz.ratio(name1, name2) / 100
+        except Exception as e:
+            print(f"[fuzz] Exception at row {i}: {e}")
+            score = 0.0
+        fuzz_scores.append(score)
+
+    batch["fuzz_ratio"] = fuzz_scores
 
     # Compute longest common substring similarity
     batch["lcsubstr"] = batch.apply(
