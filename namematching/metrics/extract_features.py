@@ -1,4 +1,6 @@
 import pandas as pd
+import textdistance as td
+from fuzzywuzzy import fuzz
 
 
 def jaccard(name1, name2):
@@ -142,6 +144,36 @@ def compute_features(batch):
     )
 
     return batch
+
+
+def extract_features(input_path, output_path, batch=5000):
+    """
+    Process a large CSV file in batches, compute features, and add them.
+
+    Args:
+        input_path (str): Path to the input CSV.
+        output_path (str): Path to save the CSV with features.
+        batch_size (int): Number of rows to process at a time.
+    """
+    first_batch = True
+    total_processed = 0
+
+    for i, batch in enumerate(pd.read_csv(input_path, chunksize=batch)):
+        # Compute features for the current batch
+        batch = compute_features(batch)
+
+        # Save the batch to CSV (overwrite if first, append otherwise)
+        batch.to_csv(
+            output_path,
+            mode="w" if first_batch else "a",
+            header=first_batch,
+            index=False,
+            encoding="utf-8"
+        )
+
+        total_processed += len(batch)
+        print(f"Batch {i + 1} saved ({total_processed} rows processed)")
+        first_batch = False
 
 
 if __name__ == "__main__":
