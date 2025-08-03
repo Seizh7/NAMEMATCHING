@@ -1,4 +1,8 @@
+import pandas as pd
 import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from config import CONFIG
 
 # Define characters
 CHARACTERS = "abcdefghijklmnopqrstuvwxyz "
@@ -34,6 +38,62 @@ def char_tokenizer(name):
     return np.array(padded_token)
 
 
+def load_and_prepare_data(csv_path):
+    """
+    Loads a dataset from CSV, encodes character-level inputs and features,
+    splits into train/test sets, and returns inputs and labels.
+
+    Args:
+        csv_path (str): Path to the input CSV file
+
+    Returns:
+        tuple:
+            - (X1_train, X2_train, F_train, y_train): training data
+            - (X1_test, X2_test, F_test, y_test): test data
+            - scaler (StandardScaler): fitted scaler for features
+            - char_to_idx (dict): character-to-index mapping
+    """
+    # Load data
+    df = pd.read_csv(csv_path)
+
+    # Encode both name columns using the character tokenizer
+    X_name1 = np.stack(df["name1"].map(char_tokenizer))
+    X_name2 = np.stack(df["name2"].map(char_tokenizer))
+
+    # Select and normalize classical similarity features
+    features_cols = [
+        'jaro', 'jaro_winkler', 'fuzz_ratio',
+        'lcsubstr', 'jaccard', 'startswith_same', 'endswith_same'
+    ]
+    scaler = StandardScaler()
+    X_feats = scaler.fit_transform(df[features_cols])
+
+    # Extract labels
+    y = df["label"].values
+
+    # Split all inputs into train/test sets (80/20)
+    (
+        X1_train, X1_test,
+        X2_train, X2_test,
+        F_train, F_test,
+        y_train, y_test
+    ) = train_test_split(
+        X_name1,
+        X_name2,
+        X_feats,
+        y,
+        test_size=0.2,
+        random_state=42,
+    )
+
+    return (
+        (X1_train, X2_train, F_train, y_train),
+        (X1_test, X2_test, F_test, y_test),
+        scaler,
+        char_to_idx,
+    )
+
+
 if __name__ == "__main__":
     name = "joe biden"
     token = char_tokenizer(name)
@@ -41,3 +101,17 @@ if __name__ == "__main__":
     print(char_to_idx)
     print(f"Nom : {name}")
     print(f"Token : {name}")
+
+    data_path = CONFIG.data_dir / "test_data.csv"
+    (
+        (X1_train, X2_train, F_train, y_train),
+        (X1_test, X2_test, F_test, y_test),
+        scaler,
+        mapping,
+    ) = load_and_prepare_data(data_path)
+
+    print("X1_train shape:", X1_train.shape)
+    print("X2_train shape:", X2_train.shape)
+    print("F_train shape:", F_train.shape)
+    print("y_train:", y_train)
+    print("X1_test shape:", X1_test.shape)
