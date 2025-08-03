@@ -26,12 +26,18 @@ def get_name_and_aliases(entity_id, langs=["en", "fr", "de"]):
     # Entity's data
     entity = data["entities"][entity_id]
 
-    # Extract the English label (main name)
+    # Extract the label (main name)
     label = ""
     for lang in langs:
         if lang in entity.get("labels", {}):
             label = entity["labels"][lang]["value"]
             break
+
+    # Fallback to enwiki title when no label is available
+    if not label:
+        sitelinks = entity.get("sitelinks", {})
+        if "enwiki" in sitelinks:
+            label = sitelinks["enwiki"].get("title", "")
 
     # Extract English aliases
     aliases = entity.get("aliases", {}).get("en", [])
@@ -132,6 +138,6 @@ def get_all_names_with_aliases(qids, output_path, batch_size=10):
 
 if __name__ == "__main__":
     # Example
-    result = get_name_and_aliases("Q501919")
+    result = get_name_and_aliases("Q6279")
     print(result)
-    #print(get_all_us_legislator_qids())
+    print(get_all_us_legislator_qids())
