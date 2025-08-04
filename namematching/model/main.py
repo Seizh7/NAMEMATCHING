@@ -4,6 +4,7 @@ from sklearn.metrics import classification_report
 from namematching.model.prepare_data import load_and_prepare_data
 from namematching.model.build_model import build_namematching_model
 from config import CONFIG
+import matplotlib.pyplot as plt
 
 MODEL_PATH = os.path.join(CONFIG.export_dir, "namematching_model.keras")
 TOKENIZER_PATH = os.path.join(CONFIG.export_dir, "char_tokenizer.pkl")
@@ -33,13 +34,25 @@ def main():
     )
 
     # Train the model
-    model.fit(
+    history = model.fit(
         [train_X1, train_X2, train_feats],
         y_train,
         validation_data=([test_X1, test_X2, test_feats], y_test),
         epochs=15,
         batch_size=32,
     )
+
+    # Visualization of the training curves
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Val Accuracy')
+    plt.title('Model Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig(os.path.join(CONFIG.export_dir, "training_accuracy.png"))
+    plt.close()
 
     # Save the model and preprocessing tools
     model.save(MODEL_PATH)
