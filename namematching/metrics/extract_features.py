@@ -1,6 +1,7 @@
 import pandas as pd
 import textdistance as td
 from fuzzywuzzy import fuzz
+import numpy as np
 
 
 def jaccard(name1, name2):
@@ -176,6 +177,20 @@ def extract_features(input_path, output_path, batch=5000):
         first_batch = False
 
 
+def extract_individual_features(name1, name2):
+    features = [
+        td.jaro.normalized_similarity(name1, name2),
+        td.jaro_winkler.normalized_similarity(name1, name2),
+        fuzz.ratio(name1, name2) / 100,
+        longest_common_substring(name1, name2),
+        jaccard(name1, name2),
+        startswith_same(name1, name2),
+        endswith_same(name1, name2),
+    ]
+
+    return np.array([features])
+
+
 if __name__ == "__main__":
     name1 = "joe biden"
     name2 = "joseph biden"
@@ -224,5 +239,7 @@ if __name__ == "__main__":
 
     test_df = pd.DataFrame(data)
     features_df = compute_features(test_df)
-
     print(f"{features_df}")
+
+    features_np = extract_individual_features(name1, name2)
+    print(f"Individual features between {name1} and {name2}: {features_np}")
