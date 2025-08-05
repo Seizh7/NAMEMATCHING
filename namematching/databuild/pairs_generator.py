@@ -85,6 +85,19 @@ def generate_negative_pairs(qid, data, n_positives):
                     "name2": name2,
                     "label": 0
                 })
+
+                # Build negative with firstname of name2 +
+                # lastname of name1
+                name1_parts = name1.split()
+                name2_parts = name2.split()
+                if len(name1_parts) >= 2 and len(name2_parts) >= 2:
+                    fake_name2 = f"{name2_parts[0]} {name1_parts[-1]}"
+                    if name1 != fake_name2:
+                        negative_pairs.append({
+                            "name1": name1,
+                            "name2": fake_name2,
+                            "label": 0
+                        })
                 break  # move to the next other_qid
 
     return negative_pairs
