@@ -1,6 +1,5 @@
-from itertools import combinations, cycle
+from itertools import combinations
 import utils
-import random
 import pandas as pd
 import os
 import csv
@@ -52,59 +51,58 @@ def generate_negative_pairs(qid, data, n_positives):
     Returns:
         list[dict]: A list of negative name pairs.
     """
-    # If no positive pairs, don't generate negatives (avoid imbalance noise)
-    if n_positives == 0:
-        return []
-
     # Get all QIDs except the current one
     all_qids = list(data.keys())
     other_qids = [other for other in all_qids if other != qid]
 
     names1_list = [data[qid]["name"]] + data[qid].get("aliases", [])
-    names1_cycle = cycle(names1_list)
 
-    # Determine how many negatives to generate
-    n_negatives = max(n_positives, len(names1_list))
-    if n_negatives == 0:
-        n_negatives = 1  # ensure at least one negative pair
+    # Target counts: 3 negatives per positive, half of them "hard"
+    total_needed = n_positives * 3
+    hard_needed = int(total_needed * 0.5)
 
-    n_negatives = min(n_negatives, len(other_qids))
+    negatives = []
+    seen = set()  # to avoid duplicate pairs
+    hard_count = 0
 
-    # Randomly sample other people to pair against
-    selected_qids = random.sample(other_qids, k=n_negatives)
+    i = 0
+    while len(negatives) < total_needed:
+        # Pick a source name (cycles through names1_list)
+        name1 = names1_list[i % len(names1_list)]
 
-    negative_pairs = []
+        # Pick a target "other" person and use their main name
+        other_person = data[other_qids[i % len(other_qids)]]
+        name2 = other_person.get("name", "").strip()
+        i += 1
 
-    for other_qid in selected_qids:
-        name2 = data[other_qid].get("name", "").strip()
-        if not name2:
-            continue  # skip if name2 is missing or empty
+        if not name2 or name1 == name2:
+            continue
+        if (name1, name2) in seen:
+            continue
 
-        # Create negatives pairs
-        for _ in range(len(names1_list)):  # prevent infinite loop
-            name1 = next(names1_cycle)
-            if name1 != name2:
-                negative_pairs.append({
-                    "name1": name1,
-                    "name2": name2,
-                    "label": 0
-                })
+        # Add a standard negative pair
+        negatives.append({"name1": name1, "name2": name2, "label": 0})
+        seen.add((name1, name2))
 
-                # Build negative with firstname of name2 +
-                # lastname of name1
-                name1_parts = name1.split()
-                name2_parts = name2.split()
-                if len(name1_parts) >= 2 and len(name2_parts) >= 2:
-                    fake_name2 = f"{name2_parts[0]} {name1_parts[-1]}"
-                    if name1 != fake_name2:
-                        negative_pairs.append({
-                            "name1": name1,
-                            "name2": fake_name2,
-                            "label": 0
-                        })
-                break  # move to the next other_qid
+        # Optionally add a "hard negative" (same-family-name construction)
+        if hard_count < hard_needed and len(negatives) < total_needed:
+            parts1 = name1.split()
+            parts2 = name2.split()
+            if len(parts1) >= 2 and len(parts2) >= 2:
+                # Create hard negative pair
+                fake_name2 = f"{parts2[0]} {parts1[-1]}".strip()
+                if (
+                    fake_name2 not in (name1, name2) and
+                    (name1, fake_name2) not in seen
+                ):
+                    negatives.append(
+                        {"name1": name1, "name2": fake_name2, "label": 0}
+                    )
+                    seen.add((name1, fake_name2))
+                    hard_count += 1
 
-    return negative_pairs
+    # Trim if there are too many pairs
+    return negatives[:total_needed]
 
 
 def generate_pairs(qid, data):
