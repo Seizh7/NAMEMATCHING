@@ -52,6 +52,10 @@ def generate_negative_pairs(qid, data, n_positives):
     Returns:
         list[dict]: A list of negative name pairs.
     """
+    # If no positive pairs, don't generate negatives (avoid imbalance noise)
+    if n_positives == 0:
+        return []
+
     # Get all QIDs except the current one
     all_qids = list(data.keys())
     other_qids = [other for other in all_qids if other != qid]
@@ -182,6 +186,11 @@ def generate_and_save_pairs(
     qids = list(data.keys())
 
     for i, qid in enumerate(qids):
+        # Skip persons without aliases
+        aliases = data[qid].get("aliases", []) or []
+        if len(aliases) == 0:
+            continue
+
         pairs = generate_pairs(qid, data)
         batch.extend(pairs)
 
