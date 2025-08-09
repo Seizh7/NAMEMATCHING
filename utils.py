@@ -15,7 +15,7 @@ def save_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def normalize_name(name):
+def normalize_name(name: str) -> str:
     """
     Normalizes a personal name by removing punctuation, converting to
     lowercase, and collapsing extra spaces.
@@ -26,11 +26,26 @@ def normalize_name(name):
     Returns:
         str: Normalized version of the name.
     """
+
     if not name:
         return ""
-    name = name.lower()                  # Lowercase for consistent comparison
-    name = re.sub(r"[.']", "", name)     # Remove dots and apostrophes
-    name = re.sub(r"[-]", " ", name)     # Replace hyphens with space
-    name = re.sub(r"\s+", " ", name)     # Collapse multiple spaces into one
-    name = name.strip(", ")              # Remove commas and spaces
+
+    if not isinstance(name, str):
+        name = str(name)
+
+    # Replace some separators with space
+    name = re.compile(r"[\-/_]").sub(" ", name)
+
+    # Remove primary punctuation
+    name = re.compile(r"[.,'\"]").sub("", name)
+
+    # Replace parentheses with space (keep inner content)
+    name = re.sub(r"[()]", " ", name)
+
+    # Collapse whitespace
+    name = re.compile(r"\s+").sub(" ", name).strip()
+
+    if not name:
+        return ""
+
     return name.strip()
