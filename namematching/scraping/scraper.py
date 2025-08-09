@@ -3,6 +3,37 @@ import time
 import utils
 from SPARQLWrapper import SPARQLWrapper, JSON
 
+# terms to exclude
+EXCLUSION_TERMS = [
+    "president",
+    "secretary",
+    "governor",
+    "gov",
+    "mayor",
+    "senator",
+    "sen",
+    "congressman",
+    "general",
+    "colonel",
+    "brigadier general",
+    "vp",
+    "potus",
+    "vp potus",
+    "rep",
+    "first lady",
+]
+
+
+def excluded_term(name):
+    """
+    Check if the name contains any excluded terms.
+    """
+    name = " " + name.lower() + " "
+    for term in EXCLUSION_TERMS:
+        if f" {term} " in name:
+            return True
+    return False
+
 
 def get_name_and_aliases(entity_id, langs=["en", "fr", "de"]):
     """
@@ -47,10 +78,16 @@ def get_name_and_aliases(entity_id, langs=["en", "fr", "de"]):
     normalized_label = utils.normalize_name(label)
     normalized_aliases = [utils.normalize_name(alias) for alias in alias_list]
 
-    return {
-        "name": normalized_label,
-        "aliases": normalized_aliases
-    }
+    # If the main name is excluded, ignore the entity
+    if excluded_term(normalized_label):
+        return None
+
+    # Filter aliases containing excluded terms
+    filtered_aliases = [
+        a for a in normalized_aliases if not excluded_term(a)
+    ]
+
+    return {"name": normalized_label, "aliases": filtered_aliases}
 
 
 def get_all_us_legislator_qids():
