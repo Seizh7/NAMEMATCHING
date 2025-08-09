@@ -1,7 +1,5 @@
 import pandas as pd
 import textdistance as td
-from fuzzywuzzy import fuzz
-import numpy as np
 
 
 def jaccard(name1, name2):
@@ -68,18 +66,42 @@ def longest_common_substring(name1, name2):
     return max_len / max_len_name if max_len_name > 0 else 0
 
 
-def startswith_same(name1, name2):
-    """
-    Returns 1 if both names start with the same word, else 0.
-    """
-    return int(name1.split()[0] == name2.split()[0])
+def first_name_jaro(name1, name2):
+    """Jaro similarity on first tokens."""
+    first1 = name1.split()[0].lower() if name1.split() else ""
+    first2 = name2.split()[0].lower() if name2.split() else ""
+    return td.jaro.normalized_similarity(first1, first2)
 
 
-def endswith_same(name1, name2):
-    """
-    Returns 1 if both names end with the same word, else 0.
-    """
-    return int(name1.split()[-1] == name2.split()[-1])
+def last_name_jaro(name1, name2):
+    """Jaro similarity on last tokens."""
+    last1 = name1.split()[-1].lower() if name1.split() else ""
+    last2 = name2.split()[-1].lower() if name2.split() else ""
+    return td.jaro.normalized_similarity(last1, last2)
+
+
+def levenshtein_norm(name1: str, name2: str) -> float:
+    """Normalized Levenshtein similarity: 1 - distance/max_len."""
+    a = name1.lower().strip()
+    b = name2.lower().strip()
+    max_len = max(len(a), len(b), 1)
+    dist = td.levenshtein.distance(a, b)
+    return 1 - dist / max_len
+
+
+def token_count_diff(name1: str, name2: str) -> int:
+    """Absolute difference in token counts."""
+    return abs(len(name1.split()) - len(name2.split()))
+
+
+def initials_match_ratio(name1: str, name2: str) -> float:
+    """Shared initials ratio over union of initials sets."""
+    inits1 = {tok[0].lower() for tok in name1.split() if tok}
+    inits2 = {tok[0].lower() for tok in name2.split() if tok}
+    union = len(inits1 | inits2)
+    if union == 0:
+        return 0.0
+    return len(inits1 & inits2) / union
 
 
 def compute_features(batch):
@@ -92,12 +114,14 @@ def compute_features(batch):
     Returns:
         pd.DataFrame: The same batch with new feature columns added.
     """
-    # Compute Jaro similarity (character-level)
-    batch["jaro"] = batch.apply(
-        lambda x: td.jaro.normalized_similarity(x["name1"], x["name2"]),
+    batch["first_name_jaro"] = batch.apply(
+        lambda x: first_name_jaro(x["name1"], x["name2"]),
         axis=1
     )
-
+    batch["last_name_jaro"] = batch.apply(
+        lambda x: last_name_jaro(x["name1"], x["name2"]),
+        axis=1
+    )
     # Compute Jaro-Winkler similarity
     batch["jaro_winkler"] = batch.apply(
         lambda x: td.jaro_winkler.normalized_similarity(
@@ -105,42 +129,29 @@ def compute_features(batch):
         ),
         axis=1
     )
-
-    # Compute Fuzzy ratio with error tracing
-    fuzz_scores = []
-    for i, row in batch.iterrows():
-        try:
-            name1 = str(row["name1"])
-            name2 = str(row["name2"])
-            score = fuzz.ratio(name1, name2) / 100
-        except Exception as e:
-            print(f"[fuzz] Exception at row {i}: {e}")
-            score = 0.0
-        fuzz_scores.append(score)
-
-    batch["fuzz_ratio"] = fuzz_scores
-
     # Compute longest common substring similarity
     batch["lcsubstr"] = batch.apply(
         lambda x: longest_common_substring(x["name1"], x["name2"]),
         axis=1
     )
-
     # Compute Jaccard similarity
     batch["jaccard"] = batch.apply(
         lambda x: jaccard(x["name1"], x["name2"]),
         axis=1
     )
-
-    # Same starting word
-    batch["startswith_same"] = batch.apply(
-        lambda x: startswith_same(x["name1"], x["name2"]),
+    # Compute Levenshtein similarity
+    batch["levenshtein_norm"] = batch.apply(
+        lambda x: levenshtein_norm(x["name1"], x["name2"]),
         axis=1
     )
-
-    # Same ending word
-    batch["endswith_same"] = batch.apply(
-        lambda x: endswith_same(x["name1"], x["name2"]),
+    # Compute token count difference
+    batch["token_count_diff"] = batch.apply(
+        lambda x: token_count_diff(x["name1"], x["name2"]),
+        axis=1
+    )
+    # Compute initials match ratio
+    batch["initials_match_ratio"] = batch.apply(
+        lambda x: initials_match_ratio(x["name1"], x["name2"]),
         axis=1
     )
 
@@ -178,23 +189,64 @@ def extract_features(input_path, output_path, batch=5000):
 
 
 def extract_individual_features(name1, name2):
-    features = [
-        td.jaro.normalized_similarity(name1, name2),
-        td.jaro_winkler.normalized_similarity(name1, name2),
-        fuzz.ratio(name1, name2) / 100,
-        longest_common_substring(name1, name2),
-        jaccard(name1, name2),
-        startswith_same(name1, name2),
-        endswith_same(name1, name2),
+    """
+    Extracts features for a single pair of names.
+
+    Args:
+        name1 (str): First name
+        name2 (str): Second name
+
+    Returns:
+        pd.DataFrame: Features in a format compatible with the trained scaler
+    """
+    # Define feature names in the same order as during training
+    feature_names = [
+        'first_name_jaro',
+        'last_name_jaro',
+        'jaro_winkler',
+        'lcsubstr',
+        'jaccard',
+        'levenshtein_norm',
+        'token_count_diff',
+        'initials_match_ratio'
     ]
 
-    return np.array([features])
+    # Calculate features
+    features = [
+        first_name_jaro(name1, name2),
+        last_name_jaro(name1, name2),
+        td.jaro_winkler.normalized_similarity(name1, name2),
+        longest_common_substring(name1, name2),
+        jaccard(name1, name2),
+        levenshtein_norm(name1, name2),
+        token_count_diff(name1, name2),
+        initials_match_ratio(name1, name2),
+    ]
+
+    # Return as DataFrame with correct feature names
+    return pd.DataFrame([features], columns=feature_names)
 
 
 if __name__ == "__main__":
     name1 = "joe biden"
     name2 = "joseph biden"
     name3 = "joseph robinette biden"
+
+    # Startswith same
+    start1 = first_name_jaro(name1, name2)
+    start2 = first_name_jaro(name1, name3)
+    start3 = first_name_jaro(name2, name3)
+    print(f"Jaro first name {name1} - {name2} : {start1}")
+    print(f"Jaro first name {name1} - {name3} : {start2}")
+    print(f"Jaro first name {name2} - {name3} : {start3}")
+
+    # Endswith same
+    end1 = last_name_jaro(name1, name2)
+    end2 = last_name_jaro(name1, name3)
+    end3 = last_name_jaro(name2, name3)
+    print(f"Jaro last name {name1} - {name2} : {end1}")
+    print(f"Jaro last name {name1} - {name3} : {end2}")
+    print(f"Jaro last name {name2} - {name3} : {end3}")
 
     # Jaccard index
     jaccard_index1 = jaccard(name1, name2)
@@ -211,22 +263,6 @@ if __name__ == "__main__":
     print(f"Longest common substring for {name1} - {name2} : {lcsubstr1}")
     print(f"Longest common substring for {name1} - {name3} : {lcsubstr2}")
     print(f"Longest common substring for {name2} - {name3} : {lcsubstr3}")
-
-    # Startswith same
-    start1 = startswith_same(name1, name2)
-    start2 = startswith_same(name1, name3)
-    start3 = startswith_same(name2, name3)
-    print(f"Startswith same for {name1} - {name2} : {start1}")
-    print(f"Startswith same for {name1} - {name3} : {start2}")
-    print(f"Startswith same for {name2} - {name3} : {start3}")
-
-    # Endswith same
-    end1 = endswith_same(name1, name2)
-    end2 = endswith_same(name1, name3)
-    end3 = endswith_same(name2, name3)
-    print(f"Endswith same for {name1} - {name2} : {end1}")
-    print(f"Endswith same for {name1} - {name3} : {end2}")
-    print(f"Endswith same for {name2} - {name3} : {end3}")
 
     data = [
         {"name1": "joe biden", "name2": "joseph biden"},
