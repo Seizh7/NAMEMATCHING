@@ -38,7 +38,7 @@ def main():
         [train_X1, train_X2, train_feats],
         y_train,
         validation_data=([test_X1, test_X2, test_feats], y_test),
-        epochs=15,
+        epochs=10,
         batch_size=32,
     )
 
