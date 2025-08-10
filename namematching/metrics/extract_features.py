@@ -1,6 +1,9 @@
 import pandas as pd
 import textdistance as td
 
+# Suffix tokens to ignore when comparing last names
+SUFFIXES = {"jr", "sr", "iii", "iv", "ii"}
+
 
 def jaccard(name1, name2):
     """
@@ -24,7 +27,7 @@ def jaccard(name1, name2):
     union = tokens_1 | tokens_2
 
     # Number of shared tokens divided by total unique tokens
-    return len(intersection) / len(union) if union else 0
+    return len(intersection) / len(union) if union else 0.0
 
 
 def longest_common_substring(name1, name2):
@@ -63,45 +66,101 @@ def longest_common_substring(name1, name2):
     max_len_name = max(len(name1), len(name2))
 
     # Return the Longest Common Substring (0 to 1)
-    return max_len / max_len_name if max_len_name > 0 else 0
+    return max_len / max_len_name if max_len_name > 0 else 0.0
 
 
 def first_name_jaro(name1, name2):
     """Jaro similarity on first tokens."""
-    first1 = name1.split()[0].lower() if name1.split() else ""
-    first2 = name2.split()[0].lower() if name2.split() else ""
+    s1 = name1.split()
+    s2 = name2.split()
+    first1 = s1[0] if s1 else ""
+    first2 = s2[0] if s2 else ""
     return td.jaro.normalized_similarity(first1, first2)
 
 
+def strip_suffix(tokens):
+    """Removes common suffixes from the last token."""
+    while tokens and tokens[-1].rstrip('.') in SUFFIXES:
+        tokens.pop()
+    return tokens
+
+
 def last_name_jaro(name1, name2):
-    """Jaro similarity on last tokens."""
-    last1 = name1.split()[-1].lower() if name1.split() else ""
-    last2 = name2.split()[-1].lower() if name2.split() else ""
+    """Jaro similarity on last substantive token (suffixes removed)."""
+    t1 = strip_suffix(name1.split())
+    t2 = strip_suffix(name2.split())
+    last1 = t1[-1] if t1 else ""
+    last2 = t2[-1] if t2 else ""
     return td.jaro.normalized_similarity(last1, last2)
 
 
-def levenshtein_norm(name1: str, name2: str) -> float:
+def levenshtein_norm(name1, name2):
     """Normalized Levenshtein similarity: 1 - distance/max_len."""
-    a = name1.lower().strip()
-    b = name2.lower().strip()
+    a = name1.strip()
+    b = name2.strip()
     max_len = max(len(a), len(b), 1)
     dist = td.levenshtein.distance(a, b)
-    return 1 - dist / max_len
+    return 1.0 - dist / max_len
 
 
-def token_count_diff(name1: str, name2: str) -> int:
+def token_count_diff(name1, name2):
     """Absolute difference in token counts."""
     return abs(len(name1.split()) - len(name2.split()))
 
 
-def initials_match_ratio(name1: str, name2: str) -> float:
+def initials_match_ratio(name1, name2):
     """Shared initials ratio over union of initials sets."""
-    inits1 = {tok[0].lower() for tok in name1.split() if tok}
-    inits2 = {tok[0].lower() for tok in name2.split() if tok}
+    inits1 = {token[0] for token in name1.split() if token}
+    inits2 = {token[0] for token in name2.split() if token}
     union = len(inits1 | inits2)
     if union == 0:
         return 0.0
     return len(inits1 & inits2) / union
+
+
+def is_initial_token(token):
+    """True if token is a single alphabetical letter."""
+    return len(token) == 1 and token.isalpha()
+
+
+def abbreviation_forms(name):
+    """
+    Extracts ordered initials if 'name' is a valid abbreviation.
+    """
+    tokens = name.split()
+
+    # Case 1: space-separated initials
+    if tokens and all(is_initial_token(t) for t in tokens):
+        return tokens
+
+    # Case 2: single fused token
+    if len(tokens) == 1:
+        token = tokens[0]
+        if token.isalpha() and len(token) > 1:
+            return list(token)
+
+    return []
+
+
+def covers(abbrev_name, full_name):
+    """True if abbrev_name matches initials of full_name."""
+    abbrev_letters = abbreviation_forms(abbrev_name)
+    if not abbrev_letters:
+        return False
+
+    tokens = full_name.split()
+    while tokens and tokens[-1] in SUFFIXES:
+        tokens.pop()
+
+    if len(tokens) != len(abbrev_letters):
+        return False
+
+    return abbrev_letters == [t[0] for t in tokens]
+
+
+def initials_full_cover(name1, name2):
+    """1 if either name is abbreviation of the other, else 0."""
+    return 1 if covers(name1, name2) or covers(name2, name1) else 0
 
 
 def compute_features(batch):
@@ -154,11 +213,16 @@ def compute_features(batch):
         lambda x: initials_match_ratio(x["name1"], x["name2"]),
         axis=1
     )
+    # Compute initials full cover
+    batch["initials_full_cover"] = batch.apply(
+        lambda x: initials_full_cover(x["name1"], x["name2"]),
+        axis=1,
+    )
 
     return batch
 
 
-def extract_features(input_path, output_path, batch=5000):
+def extract_features(input_path, output_path, batch_size=5000):
     """
     Process a large CSV file in batches, compute features, and add them.
 
@@ -170,12 +234,14 @@ def extract_features(input_path, output_path, batch=5000):
     first_batch = True
     total_processed = 0
 
-    for i, batch in enumerate(pd.read_csv(input_path, chunksize=batch)):
+    for i, chunk in enumerate(
+        pd.read_csv(input_path, chunksize=batch_size, dtype=str)
+    ):
         # Compute features for the current batch
-        batch = compute_features(batch)
+        chunk = compute_features(chunk)
 
         # Save the batch to CSV (overwrite if first, append otherwise)
-        batch.to_csv(
+        chunk.to_csv(
             output_path,
             mode="w" if first_batch else "a",
             header=first_batch,
@@ -183,7 +249,7 @@ def extract_features(input_path, output_path, batch=5000):
             encoding="utf-8"
         )
 
-        total_processed += len(batch)
+        total_processed += len(chunk)
         print(f"Batch {i + 1} saved ({total_processed} rows processed)")
         first_batch = False
 
@@ -208,7 +274,8 @@ def extract_individual_features(name1, name2):
         'jaccard',
         'levenshtein_norm',
         'token_count_diff',
-        'initials_match_ratio'
+        'initials_match_ratio',
+        'initials_full_cover',
     ]
 
     # Calculate features
@@ -221,6 +288,7 @@ def extract_individual_features(name1, name2):
         levenshtein_norm(name1, name2),
         token_count_diff(name1, name2),
         initials_match_ratio(name1, name2),
+        initials_full_cover(name1, name2),
     ]
 
     # Return as DataFrame with correct feature names
