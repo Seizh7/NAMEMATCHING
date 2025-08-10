@@ -5,7 +5,7 @@ def main():
     extract_features(
         input_path="data/pairs_generated.csv",
         output_path="data/pairs_and_features.csv",
-        batch=5000
+        batch_size=5000
     )
 
 
