@@ -66,6 +66,20 @@ def generate_negative_pairs(qid, data, n_positives):
     hard_count = 0
 
     i = 0
+    # Suffixes we avoid using as a family name in hard negatives
+    SUFFIXES = {"jr", "sr", "iii", "iv", "ii"}
+
+    def last_non_suffix(parts):
+        """Return last token from parts that's not a suffix, else None.
+
+        We strip simple punctuation (comma / period) at the end for the check,
+        but keep the original token when reconstructing the fake name.
+        """
+        for token in reversed(parts):
+            if token.lower() not in SUFFIXES:
+                return token
+        return None
+
     while len(negatives) < total_needed:
         # Pick a source name (cycles through names1_list)
         name1 = names1_list[i % len(names1_list)]
@@ -89,17 +103,23 @@ def generate_negative_pairs(qid, data, n_positives):
             parts1 = name1.split()
             parts2 = name2.split()
             if len(parts1) >= 2 and len(parts2) >= 2:
-                # Create hard negative pair
-                fake_name2 = f"{parts2[0]} {parts1[-1]}".strip()
-                if (
-                    fake_name2 not in (name1, name2) and
-                    (name1, fake_name2) not in seen
-                ):
-                    negatives.append(
-                        {"name1": name1, "name2": fake_name2, "label": 0}
-                    )
-                    seen.add((name1, fake_name2))
-                    hard_count += 1
+                surname = last_non_suffix(parts1)
+                if surname and surname.lower() not in SUFFIXES:
+                    fake_name2 = f"{parts2[0]} {surname}".strip()
+                    # Skip if last token of fake name is still a suffix
+                    last_token_clean = fake_name2.split()[-1].lower()
+                    if last_token_clean in SUFFIXES:
+                        fake_name2 = None
+                    if (
+                        fake_name2 and
+                        fake_name2 not in (name1, name2) and
+                        (name1, fake_name2) not in seen
+                    ):
+                        negatives.append(
+                            {"name1": name1, "name2": fake_name2, "label": 0}
+                        )
+                        seen.add((name1, fake_name2))
+                        hard_count += 1
 
     # Trim if there are too many pairs
     return negatives[:total_needed]
@@ -151,6 +171,10 @@ def write_batch_to_csv(batch, output_path):
         None
     """
     df = pd.DataFrame(batch)
+
+    df["name1"] = df["name1"].str.lower()
+    df["name2"] = df["name2"].str.lower()
+
     df.to_csv(
         output_path,
         mode="a",
@@ -201,10 +225,10 @@ def generate_and_save_pairs(
 
 if __name__ == "__main__":
     data = utils.load_json("data/test.json")
-    name = data["Q109463"]["name"]
-    aliases = data["Q109463"]["aliases"]
-    pos = generate_positive_pairs("Q109463", data)
+    name = data["Q122841"]["name"]
+    aliases = data["Q122841"]["aliases"]
+    pos = generate_positive_pairs("Q122841", data)
     print(f"positive pair(s): {pos}")
 
-    neg = generate_negative_pairs("Q109463", data, len(pos))
+    neg = generate_negative_pairs("Q122841", data, len(pos))
     print(f"negative pair(s): {neg}")
