@@ -203,8 +203,8 @@ def compute_features(batch):
         lambda x: levenshtein_norm(x["name1"], x["name2"]),
         axis=1
     )
-    # Compute token count difference
-    batch["token_count_diff"] = batch.apply(
+    # Intermediate token count diff (not kept as a feature)
+    batch["token_count_diff_tmp"] = batch.apply(
         lambda x: token_count_diff(x["name1"], x["name2"]),
         axis=1
     )
@@ -218,6 +218,32 @@ def compute_features(batch):
         lambda x: initials_full_cover(x["name1"], x["name2"]),
         axis=1,
     )
+
+    # extra_middle: 1 if there is an extra middle token while last names
+    # are almost identical
+    # Threshold for "≈1" last name similarity set to 0.99
+    batch["extra_middle"] = (
+        (batch["token_count_diff_tmp"] > 0) & (batch["last_name_jaro"] > 0.99)
+    ).astype(int)
+
+    # first_name_mismatch: last names similar but first names very dissimilar
+    batch["first_name_mismatch"] = (
+        (batch["last_name_jaro"] > 0.95) & (batch["first_name_jaro"] < 0.2)
+    ).astype(int)
+
+    # same_last_name: exact last substantive token equality (case-insensitive)
+    def _same_last(a, b):
+        t1 = strip_suffix(a.split())
+        t2 = strip_suffix(b.split())
+        last1 = t1[-1].lower() if t1 else ""
+        last2 = t2[-1].lower() if t2 else ""
+        return 1 if last1 and last1 == last2 else 0
+    batch["same_last_name"] = batch.apply(
+        lambda x: _same_last(x["name1"], x["name2"]), axis=1
+    )
+
+    # Drop temporary column
+    batch.drop(columns=["token_count_diff_tmp"], inplace=True)
 
     return batch
 
@@ -273,22 +299,42 @@ def extract_individual_features(name1, name2):
         'lcsubstr',
         'jaccard',
         'levenshtein_norm',
-        'token_count_diff',
         'initials_match_ratio',
         'initials_full_cover',
+        'extra_middle',
+        'first_name_mismatch',
+        'same_last_name',
     ]
 
     # Calculate features
+    first = first_name_jaro(name1, name2)
+    last = last_name_jaro(name1, name2)
+    jw = td.jaro_winkler.normalized_similarity(name1, name2)
+    lc = longest_common_substring(name1, name2)
+    jac = jaccard(name1, name2)
+    lev = levenshtein_norm(name1, name2)
+    init_ratio = initials_match_ratio(name1, name2)
+    init_cover = initials_full_cover(name1, name2)
+    tokdiff = token_count_diff(name1, name2)
+    extra_middle = 1 if (tokdiff > 0 and last > 0.99) else 0
+    first_name_mismatch = 1 if (last > 0.95 and first < 0.2) else 0
+    t1 = strip_suffix(name1.split())
+    t2 = strip_suffix(name2.split())
+    last1 = t1[-1].lower() if t1 else ""
+    last2 = t2[-1].lower() if t2 else ""
+    same_last_name = 1 if last1 and last1 == last2 else 0
     features = [
-        first_name_jaro(name1, name2),
-        last_name_jaro(name1, name2),
-        td.jaro_winkler.normalized_similarity(name1, name2),
-        longest_common_substring(name1, name2),
-        jaccard(name1, name2),
-        levenshtein_norm(name1, name2),
-        token_count_diff(name1, name2),
-        initials_match_ratio(name1, name2),
-        initials_full_cover(name1, name2),
+        first,
+        last,
+        jw,
+        lc,
+        jac,
+        lev,
+        init_ratio,
+        init_cover,
+        extra_middle,
+        first_name_mismatch,
+        same_last_name,
     ]
 
     # Return as DataFrame with correct feature names
