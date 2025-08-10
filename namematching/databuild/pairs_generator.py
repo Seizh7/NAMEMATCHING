@@ -151,6 +151,10 @@ def write_batch_to_csv(batch, output_path):
         None
     """
     df = pd.DataFrame(batch)
+
+    df["name1"] = df["name1"].str.lower()
+    df["name2"] = df["name2"].str.lower()
+
     df.to_csv(
         output_path,
         mode="a",
