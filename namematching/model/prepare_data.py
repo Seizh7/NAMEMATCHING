@@ -8,6 +8,19 @@ from config import CONFIG
 CHARACTERS = "abcdefghijklmnopqrstuvwxyz "
 MAX_LEN = 40  # Fixed maximum length for character-level encoding
 
+# Expected feature columns
+FEATURE_COLUMNS = [
+    'first_name_jaro',
+    'last_name_jaro',
+    'jaro_winkler',
+    'lcsubstr',
+    'jaccard',
+    'levenshtein_norm',
+    'token_count_diff',
+    'initials_match_ratio',
+    'initials_full_cover',
+]
+
 # Mapping from character to integer
 char_to_idx = {c: i + 1 for i, c in enumerate(CHARACTERS)}
 
@@ -44,14 +57,12 @@ def load_and_prepare_data(csv_path):
     splits into train/test sets, and returns inputs and labels.
 
     Args:
-        csv_path (str): Path to the input CSV file
+        csv_path (str): Path to CSV.
 
     Returns:
-        tuple:
-            - (X1_train, X2_train, F_train, y_train): training data
-            - (X1_test, X2_test, F_test, y_test): test data
-            - scaler (StandardScaler): fitted scaler for features
-            - char_to_idx (dict): character-to-index mapping
+        tuple: ((X1_train, X2_train, F_train, y_train),
+                (X1_test, X2_test, F_test, y_test),
+                scaler, char_to_idx)
     """
     # Load data
     df = pd.read_csv(csv_path)
@@ -60,30 +71,26 @@ def load_and_prepare_data(csv_path):
     X_name1 = np.stack(df["name1"].map(char_tokenizer))
     X_name2 = np.stack(df["name2"].map(char_tokenizer))
 
-    # Select and normalize classical similarity features
-    features_cols = [
-        'jaro', 'jaro_winkler', 'fuzz_ratio',
-        'lcsubstr', 'jaccard', 'startswith_same', 'endswith_same'
-    ]
+    # Ensure all expected columns exist
+    required = ['name1', 'name2', 'label'] + FEATURE_COLUMNS
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing expected feature columns: {missing}")
+
+    # Encode names to fixed-length char indices
+    X_name1 = np.stack(df['name1'].map(char_tokenizer))
+    X_name2 = np.stack(df['name2'].map(char_tokenizer))
+
+    # Scale features
     scaler = StandardScaler()
-    X_feats = scaler.fit_transform(df[features_cols])
+    X_feats = scaler.fit_transform(df[FEATURE_COLUMNS])
+    y = df['label'].values
 
-    # Extract labels
-    y = df["label"].values
-
-    # Split all inputs into train/test sets (80/20)
-    (
-        X1_train, X1_test,
-        X2_train, X2_test,
-        F_train, F_test,
-        y_train, y_test
-    ) = train_test_split(
-        X_name1,
-        X_name2,
-        X_feats,
-        y,
-        test_size=0.2,
-        random_state=42,
+    (X1_train, X1_test,
+     X2_train, X2_test,
+     F_train, F_test,
+     y_train, y_test) = train_test_split(
+        X_name1, X_name2, X_feats, y, test_size=0.2, random_state=42
     )
 
     return (
