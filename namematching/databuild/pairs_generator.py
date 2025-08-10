@@ -119,7 +119,29 @@ def generate_negative_pairs(qid, data, n_positives):
                             {"name1": name1, "name2": fake_name2, "label": 0}
                         )
                         seen.add((name1, fake_name2))
-                        hard_count += 1
+
+            if len(parts1) >= 1 and len(parts2) >= 2:
+                firstname = parts1[0]
+                surname2 = last_non_suffix(parts2)
+                # Build a fake name that keeps the same first name
+                # but swaps the last name
+                if surname2 and surname2.lower() not in SUFFIXES:
+                    fake_name2 = f"{firstname} {surname2}".strip()
+                    # Avoid using the exact original names or duplicates
+                    if (
+                        fake_name2 not in (name1, name2)
+                        and (name1, fake_name2) not in seen
+                    ):
+                        negatives.append(
+                            {
+                                "name1": name1,
+                                "name2": fake_name2,
+                                "label": 0,
+                            }
+                        )
+                        seen.add((name1, fake_name2))
+
+            hard_count += 1
 
     # Trim if there are too many pairs
     return negatives[:total_needed]
