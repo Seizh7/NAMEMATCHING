@@ -1,31 +1,30 @@
 from tensorflow.keras.layers import (
     Input,
     Embedding,
-    Conv1D,
-    GlobalMaxPooling1D,
+    LSTM,
+    Bidirectional,
     Dense,
     Concatenate,
+    Dropout,
 )
 from tensorflow.keras.models import Model
 
 
-def encode_branch(input_layer, embedding_layer, conv_layer):
+def encode_branch(input_layer, embedding_layer, bilstm1, bilstm2):
     """
-    Sub-network for encoding a name input.
-
-    Applies: Embedding → Conv1D → GlobalMaxPooling.
+    Encode a name sequence using a shared embedding + stacked BiLSTMs.
 
     Args:
-        input_layer (tf.Tensor): Input tensor for a character sequence.
-        embedding_layer (tf.keras.layers.Embedding): Shared embedding layer.
-        conv_layer (tf.keras.layers.Conv1D): Shared convolutional layer.
+        input_layer (tf.Tensor): Integer index sequence (batch, max_len).
+        embedding_layer (tf.keras.layers.Embedding): Shared embedding.
 
     Returns:
-        tf.Tensor: Encoded representation of the input sequence.
+        tf.Tensor: Fixed-size contextual encoding vector.
     """
-    x = embedding_layer(input_layer)
-    x = conv_layer(x)
-    x = GlobalMaxPooling1D()(x)
+    x = embedding_layer(input_layer)  # (batch, T, embed_dim) with masking
+    # Apply shared BiLSTM stack (weight sharing across both name branches)
+    x = bilstm1(x)
+    x = bilstm2(x)
     return x
 
 
@@ -41,17 +40,22 @@ def build_classifier(concatenated_input):
         tf.Tensor: Output layer with sigmoid activation.
     """
     x = Dense(64, activation='relu')(concatenated_input)
+    x = Dropout(0.5)(x)  # Drop 50% of activations during training
     x = Dense(32, activation='relu')(x)
+    x = Dropout(0.3)(x)  # Lower dropout on the smaller layer
     output = Dense(1, activation='sigmoid')(x)
     return output
 
 
 def build_namematching_model(
-    max_len, char_vocab_size, embed_dim, num_features
+    max_len,
+    char_vocab_size,
+    embed_dim,
+    num_features,
 ):
     """
     Builds a neural model for name matching using character-level embeddings
-    and handcrafted features.
+    encoded by a shared stacked BiLSTM for each name plus handcrafted features.
 
     Args:
         max_len (int): Maximum length of character sequences.
@@ -62,33 +66,41 @@ def build_namematching_model(
     Returns:
         tf.keras.Model: A compiled Keras model ready for training.
     """
-    # Inputs: two character sequences + classical features
-    input1 = Input(shape=(max_len,))
-    input2 = Input(shape=(max_len,))
-    input_feats = Input(shape=(num_features,))
+    # Inputs: two character-index sequences + feature vector
+    input1 = Input(shape=(max_len,), name="name1_indices")
+    input2 = Input(shape=(max_len,), name="name2_indices")
+    input_feats = Input(shape=(num_features,), name="extra_features")
 
-    # Shared embedding and convolution layers for both name inputs
+    # Shared embedding for both inputs; mask_zero ignores padding index 0
     embedding = Embedding(
         input_dim=char_vocab_size,
         output_dim=embed_dim,
-        input_length=max_len
-    )
-    conv = Conv1D(filters=64, kernel_size=3, activation='relu')
+        mask_zero=True,
+        name="char_embedding",
+    )  # input_length deprecated
 
-    # Encode both name1 and name2
-    x1 = encode_branch(input1, embedding, conv)
-    x2 = encode_branch(input2, embedding, conv)
+    # Shared BiLSTM encoder layers (weights reused for both names)
+    bilstm1 = Bidirectional(LSTM(64, return_sequences=True), name="bilstm_1")
+    bilstm2 = Bidirectional(LSTM(32, return_sequences=False), name="bilstm_2")
 
-    # Concatenate both encoded names and the additional features
-    merged = Concatenate()([x1, x2, input_feats])
+    # Encode both names with the same BiLSTM encoder branch
+    x1 = encode_branch(input1, embedding, bilstm1, bilstm2)
+    x2 = encode_branch(input2, embedding, bilstm1, bilstm2)
+
+    # Fuse encoded names with handcrafted features
+    merged = Concatenate(name="fusion")([x1, x2, input_feats])
+
+    # Classification head (defined elsewhere)
     output = build_classifier(merged)
 
-    # Build and compile the model
-    model = Model(inputs=[input1, input2, input_feats], outputs=output)
-    model.compile(
-        optimizer='adam',
-        loss='binary_crossentropy',
-        metrics=['accuracy']
+    model = Model(
+        inputs=[input1, input2, input_feats],
+        outputs=output,
+        name="NameMatchingBiLSTM",
     )
-
+    model.compile(
+        optimizer="adam",
+        loss="binary_crossentropy",
+        metrics=["accuracy"],
+    )
     return model
