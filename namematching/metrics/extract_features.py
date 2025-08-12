@@ -4,136 +4,251 @@ import textdistance as td
 # Suffix tokens to ignore when comparing last names
 SUFFIXES = {"jr", "sr", "iii", "iv", "ii"}
 
+CORE_FEATURES = [
+    'first_name_jw',
+    'last_name_jaro',
+    'jaro_winkler',
+    'levenshtein_norm',
+    'initials_full_cover',
+    'first_name_mismatch',
+    'first_initial_match',
+    'first_initial_expansion',
+    'middle_initial_match',
+    'acronym_similarity',
+    'mixed_acronym_full',
+]
 
-def jaccard(name1, name2):
+
+def normalize_name(name):
+    """Normalize name by removing extra spaces and standardizing dots."""
+    return ' '.join(name.strip().split())
+
+
+def extract_tokens_with_initials(name):
     """
-    Computes Jaccard similarity between two strings.
-
-    Args:
-        name1 (str): First string.
-        name2 (str): Second string.
-
-    Returns:
-        float: Jaccard similarity score (between 0 and 1).
+    Extract tokens from name, handling initials with dots.
+    Returns (tokens, initials_positions) where initials_positions marks which tokens are initials.
     """
-    # Tokenize both names by splitting on whitespace
-    tokens_1 = set(name1.split())
-    tokens_2 = set(name2.split())
+    name = normalize_name(name)
+    tokens = name.split()
+    initials_positions = []
+    
+    for i, token in enumerate(tokens):
+        # Remove dots for analysis
+        clean_token = token.rstrip('.')
+        # Consider as initial if: single letter, or single letter followed by dot
+        if len(clean_token) == 1 and clean_token.isalpha():
+            initials_positions.append(i)
+    
+    return tokens, initials_positions
 
-    # Compute the intersection of the two token sets (common words)
-    intersection = tokens_1 & tokens_2
 
-    # Compute the union of both token sets (all unique words from both)
-    union = tokens_1 | tokens_2
-
-    # Number of shared tokens divided by total unique tokens
-    return len(intersection) / len(union) if union else 0.0
+def is_initial_token(token):
+    """True if token is a single alphabetical letter, with or without dot."""
+    clean_token = token.rstrip('.')
+    return len(clean_token) == 1 and clean_token.isalpha()
 
 
-def longest_common_substring(name1, name2):
+def get_first_letter(token):
+    """Get first letter of token, handling dots."""
+    clean_token = token.rstrip('.')
+    return clean_token[0].lower() if clean_token else ""
+
+
+def first_initial_match(name1, name2):
     """
-    Computes the length of the longest common substring.
-
-    Args:
-        name1 (str): First string.
-        name2 (str): Second string.
-
-    Returns:
-        float: Normalized longest common substring length (0 to 1).
+    Check if first tokens match by initial.
+    Returns 1 if first letters match, 0 otherwise.
     """
-    len_name1, len_name2 = len(name1), len(name2)
-    max_len = 0
-
-    # Initialize a 2D matrix to store LCS
-    # Dimensions: (len_name1 + 1) rows × (len_name2 + 1) columns
-    lcs_table = [
-        [0] * (len_name2 + 1)
-        for _ in range(len_name1 + 1)
-    ]
-
-    # Loop over each character of name1 and name2
-    for i in range(len_name1):
-        for j in range(len_name2):
-            # If characters at current positions match
-            if name1[i] == name2[j]:
-                # Update the table by extending the previous common substring
-                lcs_table[i + 1][j + 1] = lcs_table[i][j] + 1
-
-                # Update the max_len if this substring is the longest
-                max_len = max(max_len, lcs_table[i + 1][j + 1])
-
-    # Determine the maximum possible length
-    max_len_name = max(len(name1), len(name2))
-
-    # Return the Longest Common Substring (0 to 1)
-    return max_len / max_len_name if max_len_name > 0 else 0.0
+    tokens1 = name1.split()
+    tokens2 = name2.split()
+    
+    if not tokens1 or not tokens2:
+        return 0
+    
+    first1 = get_first_letter(tokens1[0])
+    first2 = get_first_letter(tokens2[0])
+    
+    return 1 if first1 == first2 else 0
 
 
-def first_name_jaro(name1, name2):
-    """Jaro similarity on first tokens."""
-    s1 = name1.split()
-    s2 = name2.split()
-    first1 = s1[0] if s1 else ""
-    first2 = s2[0] if s2 else ""
-    return td.jaro.normalized_similarity(first1, first2)
+def first_initial_expansion(name1, name2):
+    """
+    Check if one name has an initial where the other has a full first name.
+    Returns similarity score between 0 and 1.
+    """
+    tokens1 = name1.split()
+    tokens2 = name2.split()
+    
+    if not tokens1 or not tokens2:
+        return 0
+    
+    first1, first2 = tokens1[0], tokens2[0]
+    
+    # Case 1: name1 is initial, name2 is full name
+    if is_initial_token(first1) and not is_initial_token(first2):
+        initial = get_first_letter(first1)
+        full_first = get_first_letter(first2)
+        return 0.8 if initial == full_first else 0
+    
+    # Case 2: name2 is initial, name1 is full name  
+    if is_initial_token(first2) and not is_initial_token(first1):
+        initial = get_first_letter(first2)
+        full_first = get_first_letter(first1)
+        return 0.8 if initial == full_first else 0
+    
+    return 0
+
+
+def middle_initial_match(name1, name2):
+    """
+    Check if middle initials match between names.
+    Returns 1 if all middle initials match, partial score for partial matches.
+    """
+    tokens1, _ = extract_tokens_with_initials(name1)
+    tokens2, _ = extract_tokens_with_initials(name2)
+    
+    # Get middle tokens (exclude first and last)
+    if len(tokens1) <= 2 and len(tokens2) <= 2:
+        return 0  # No middle names
+    
+    middle1 = tokens1[1:-1] if len(tokens1) > 2 else []
+    middle2 = tokens2[1:-1] if len(tokens2) > 2 else []
+    
+    if not middle1 or not middle2:
+        return 0
+    
+    # Extract middle initials
+    initials_m1 = [get_first_letter(token) for token in middle1 if is_initial_token(token)]
+    initials_m2 = [get_first_letter(token) for token in middle2 if is_initial_token(token)]
+    
+    if not initials_m1 or not initials_m2:
+        return 0
+    
+    # Count matching initials
+    matches = sum(1 for i1 in initials_m1 if i1 in initials_m2)
+    total = max(len(initials_m1), len(initials_m2))
+    
+    return matches / total if total > 0 else 0
+
+
+def acronym_similarity(name1, name2):
+    """
+    Compute similarity when one or both names contain multiple initials.
+    Handles cases like 'A. B. Johnson' vs 'Andrew Bob Johnson'.
+    """
+    tokens1, initials_pos1 = extract_tokens_with_initials(name1)
+    tokens2, initials_pos2 = extract_tokens_with_initials(name2)
+    
+    # If neither name has initials, return 0
+    if not initials_pos1 and not initials_pos2:
+        return 0
+    
+    # Extract initials from each name
+    initials1 = [get_first_letter(tokens1[i]) for i in initials_pos1]
+    initials2 = [get_first_letter(tokens2[i]) for i in initials_pos2]
+    
+    # If one name is all initials, compare with first letters of other name's tokens
+    if len(initials_pos1) == len(tokens1) - 1:  # All but last token are initials
+        other_initials = [get_first_letter(token) for token in tokens2[:-1]]
+        matches = sum(1 for i1, i2 in zip(initials1, other_initials) if i1 == i2)
+        return matches / max(len(initials1), len(other_initials)) if initials1 or other_initials else 0
+    
+    if len(initials_pos2) == len(tokens2) - 1:  # All but last token are initials
+        other_initials = [get_first_letter(token) for token in tokens1[:-1]]
+        matches = sum(1 for i1, i2 in zip(initials2, other_initials) if i1 == i2)
+        return matches / max(len(initials2), len(other_initials)) if initials2 or other_initials else 0
+    
+    # Both have some initials - compare the initials directly
+    if initials1 and initials2:
+        common = set(initials1) & set(initials2)
+        total = set(initials1) | set(initials2)
+        return len(common) / len(total) if total else 0
+    
+    return 0
+
+
+def mixed_acronym_full(name1, name2):
+    """
+    Handle mixed cases like 'A. Mitch McConnell' vs 'Abraham McConnell'.
+    Returns high score if initials match but some full names are missing.
+    """
+    tokens1 = name1.split()
+    tokens2 = name2.split()
+    
+    if len(tokens1) != len(tokens2) and abs(len(tokens1) - len(tokens2)) <= 2:
+        # Different number of tokens, might be mixed case
+        
+        # Create signature for each name (I=initial, F=full, L=last)
+        def get_signature(tokens):
+            sig = []
+            for i, token in enumerate(tokens):
+                if i == len(tokens) - 1:  # Last token
+                    sig.append('L')
+                elif is_initial_token(token):
+                    sig.append('I')
+                else:
+                    sig.append('F')
+            return sig
+        
+        sig1 = get_signature(tokens1)
+        sig2 = get_signature(tokens2)
+        
+        # Check if signatures are compatible
+        if 'I' in sig1 or 'I' in sig2:
+            # Compare last names first
+            last_sim = last_name_jaro(name1, name2)
+            if last_sim > 0.9:
+                # Compare first initials
+                first_match = first_initial_match(name1, name2)
+                return 0.7 * first_match + 0.3 * last_sim
+    
+    return 0
 
 
 def strip_suffix(tokens):
-    """Removes common suffixes from the last token."""
-    while tokens and tokens[-1].rstrip('.') in SUFFIXES:
+    """Remove common suffixes from the last token."""
+    while tokens and tokens[-1].rstrip('.').lower() in SUFFIXES:
         tokens.pop()
     return tokens
 
 
 def last_name_jaro(name1, name2):
     """Jaro similarity on last substantive token (suffixes removed)."""
-    t1 = strip_suffix(name1.split())
-    t2 = strip_suffix(name2.split())
-    last1 = t1[-1] if t1 else ""
-    last2 = t2[-1] if t2 else ""
+    token1 = strip_suffix(name1.split())
+    token2 = strip_suffix(name2.split())
+    last1 = token1[-1] if token1 else ""
+    last2 = token2[-1] if token2 else ""
     return td.jaro.normalized_similarity(last1, last2)
+
+
+def first_name_jw(name1, name2):
+    """Jaro-Winkler similarity on first tokens (prefix sensitive)."""
+    name1 = name1.split()
+    name2 = name2.split()
+    first1 = name1[0] if name1 else ""
+    first2 = name2[0] if name2 else ""
+    return td.jaro_winkler.normalized_similarity(first1, first2)
 
 
 def levenshtein_norm(name1, name2):
     """Normalized Levenshtein similarity: 1 - distance/max_len."""
-    a = name1.strip()
-    b = name2.strip()
-    max_len = max(len(a), len(b), 1)
-    dist = td.levenshtein.distance(a, b)
+    name1 = name1.strip()
+    name2 = name2.strip()
+    max_len = max(len(name1), len(name2), 1)
+    dist = td.levenshtein.distance(name1, name2)
     return 1.0 - dist / max_len
 
 
-def token_count_diff(name1, name2):
-    """Absolute difference in token counts."""
-    return abs(len(name1.split()) - len(name2.split()))
-
-
-def initials_match_ratio(name1, name2):
-    """Shared initials ratio over union of initials sets."""
-    inits1 = {token[0] for token in name1.split() if token}
-    inits2 = {token[0] for token in name2.split() if token}
-    union = len(inits1 | inits2)
-    if union == 0:
-        return 0.0
-    return len(inits1 & inits2) / union
-
-
-def is_initial_token(token):
-    """True if token is a single alphabetical letter."""
-    return len(token) == 1 and token.isalpha()
-
-
 def abbreviation_forms(name):
-    """
-    Extracts ordered initials if 'name' is a valid abbreviation.
-    """
+    """Extracts ordered initials if 'name' is a valid abbreviation."""
     tokens = name.split()
 
     # Case 1: space-separated initials
     if tokens and all(is_initial_token(t) for t in tokens):
         return tokens
 
-    # Case 2: single fused token
+    # Case 2: single fused token (alphabetic, length > 1)
     if len(tokens) == 1:
         token = tokens[0]
         if token.isalpha() and len(token) > 1:
@@ -149,8 +264,8 @@ def covers(abbrev_name, full_name):
         return False
 
     tokens = full_name.split()
-    while tokens and tokens[-1] in SUFFIXES:
-        tokens.pop()
+    # remove suffixes from the tail
+    tokens = strip_suffix(tokens)
 
     if len(tokens) != len(abbrev_letters):
         return False
@@ -163,87 +278,111 @@ def initials_full_cover(name1, name2):
     return 1 if covers(name1, name2) or covers(name2, name1) else 0
 
 
+def first_name_mismatch_flag(name1, name2, last_thresh=0.95, first_thresh=0.2):
+    """
+    Binary flag when last names are very similar but first names are very dissimilar.
+    """
+    return int(last_name_jaro(name1, name2) >= last_thresh and
+               first_name_jw(name1, name2) < first_thresh)
+
+
 def compute_features(batch):
     """
-    Compute similarity features on a batch of name pairs.
+    Compute a set of string similarity and rule-based features for a batch of name pairs.
+    This is designed for name-matching tasks where we want to capture
+    similarities, abbreviations, initial matches, and potential mismatches.
 
     Args:
-        batch (pd.DataFrame): A chunk of the full CSV.
+        batch (pd.DataFrame):
+            A chunk of the dataset containing at least the columns:
+            - "name1" (str): First name string in the pair
+            - "name2" (str): Second name string in the pair
 
     Returns:
-        pd.DataFrame: The same batch with new feature columns added.
+        pd.DataFrame:
+            The same batch with additional numeric feature columns describing
+            different aspects of similarity between name1 and name2.
     """
-    batch["first_name_jaro"] = batch.apply(
-        lambda x: first_name_jaro(x["name1"], x["name2"]),
+    # Ensure names are lowercase for consistent comparisons
+    batch["name1"] = batch["name1"].str.lower()
+    batch["name2"] = batch["name2"].str.lower()
+
+    # --- String similarity metrics ---
+    # Jaro-Winkler similarity computed only on the first tokens (first names),
+    # more sensitive to prefix matches than plain Jaro.
+    batch["first_name_jw"] = batch.apply(
+        lambda x: first_name_jw(x["name1"], x["name2"]),
         axis=1
     )
+
+    # Jaro similarity computed only on the last tokens (last names),
+    # after removing common suffixes like Jr, Sr, III.
     batch["last_name_jaro"] = batch.apply(
         lambda x: last_name_jaro(x["name1"], x["name2"]),
         axis=1
     )
-    # Compute Jaro-Winkler similarity
+
+    # Full-string Jaro-Winkler similarity: captures general similarity of
+    # the complete names, giving extra weight to common prefixes.
     batch["jaro_winkler"] = batch.apply(
-        lambda x: td.jaro_winkler.normalized_similarity(
-            x["name1"], x["name2"]
-        ),
+        lambda x: td.jaro_winkler.normalized_similarity(x["name1"], x["name2"]),
         axis=1
     )
-    # Compute longest common substring similarity
-    batch["lcsubstr"] = batch.apply(
-        lambda x: longest_common_substring(x["name1"], x["name2"]),
-        axis=1
-    )
-    # Compute Jaccard similarity
-    batch["jaccard"] = batch.apply(
-        lambda x: jaccard(x["name1"], x["name2"]),
-        axis=1
-    )
-    # Compute Levenshtein similarity
+
+    # Normalized Levenshtein similarity: 1 - (edit distance / max length).
+    # Captures overall character-level edits required to transform one name into the other.
     batch["levenshtein_norm"] = batch.apply(
         lambda x: levenshtein_norm(x["name1"], x["name2"]),
         axis=1
     )
-    # Intermediate token count diff (not kept as a feature)
-    batch["token_count_diff_tmp"] = batch.apply(
-        lambda x: token_count_diff(x["name1"], x["name2"]),
-        axis=1
-    )
-    # Compute initials match ratio
-    batch["initials_match_ratio"] = batch.apply(
-        lambda x: initials_match_ratio(x["name1"], x["name2"]),
-        axis=1
-    )
-    # Compute initials full cover
+
+    # --- Initials-based coverage ---
+    # 1 if one name is an abbreviation (ordered initials) of the other,
+    # else 0.
     batch["initials_full_cover"] = batch.apply(
         lambda x: initials_full_cover(x["name1"], x["name2"]),
-        axis=1,
+        axis=1
     )
 
-    # extra_middle: 1 if there is an extra middle token while last names
-    # are almost identical
-    # Threshold for "≈1" last name similarity set to 0.99
-    batch["extra_middle"] = (
-        (batch["token_count_diff_tmp"] > 0) & (batch["last_name_jaro"] > 0.99)
-    ).astype(int)
-
-    # first_name_mismatch: last names similar but first names very dissimilar
-    batch["first_name_mismatch"] = (
-        (batch["last_name_jaro"] > 0.95) & (batch["first_name_jaro"] < 0.2)
-    ).astype(int)
-
-    # same_last_name: exact last substantive token equality (case-insensitive)
-    def _same_last(a, b):
-        t1 = strip_suffix(a.split())
-        t2 = strip_suffix(b.split())
-        last1 = t1[-1].lower() if t1 else ""
-        last2 = t2[-1].lower() if t2 else ""
-        return 1 if last1 and last1 == last2 else 0
-    batch["same_last_name"] = batch.apply(
-        lambda x: _same_last(x["name1"], x["name2"]), axis=1
+    # --- Rule-based mismatch flags ---
+    # Flags possible homonyms: last names are very similar, but first names are dissimilar.
+    batch["first_name_mismatch"] = batch.apply(
+        lambda x: first_name_mismatch_flag(x["name1"], x["name2"]),
+        axis=1
     )
 
-    # Drop temporary column
-    batch.drop(columns=["token_count_diff_tmp"], inplace=True)
+    # 1 if the first initials match, else 0.
+    batch["first_initial_match"] = batch.apply(
+        lambda x: first_initial_match(x["name1"], x["name2"]),
+        axis=1
+    )
+    
+    # 1 if the first name in one string is just an initial and matches the
+    # first letter of the other full first name.
+    batch["first_initial_expansion"] = batch.apply(
+        lambda x: first_initial_expansion(x["name1"], x["name2"]),
+        axis=1
+    )
+    
+    # 1 if middle initials (when present) match, else 0.
+    batch["middle_initial_match"] = batch.apply(
+        lambda x: middle_initial_match(x["name1"], x["name2"]),
+        axis=1
+    )
+    
+    # Similarity score between acronyms formed from each name’s tokens.
+    # Useful when both names are abbreviations.
+    batch["acronym_similarity"] = batch.apply(
+        lambda x: acronym_similarity(x["name1"], x["name2"]),
+        axis=1
+    )
+    
+    # 1 if one name is an acronym and the other is a full expansion matching
+    # the acronym letters.
+    batch["mixed_acronym_full"] = batch.apply(
+        lambda x: mixed_acronym_full(x["name1"], x["name2"]),
+        axis=1
+    )
 
     return batch
 
@@ -266,7 +405,6 @@ def extract_features(input_path, output_path, batch_size=5000):
         # Compute features for the current batch
         chunk = compute_features(chunk)
 
-        # Save the batch to CSV (overwrite if first, append otherwise)
         chunk.to_csv(
             output_path,
             mode="w" if first_batch else "a",
@@ -291,93 +429,41 @@ def extract_individual_features(name1, name2):
     Returns:
         pd.DataFrame: Features in a format compatible with the trained scaler
     """
-    # Define feature names in the same order as during training
-    feature_names = [
-        'first_name_jaro',
-        'last_name_jaro',
-        'jaro_winkler',
-        'lcsubstr',
-        'jaccard',
-        'levenshtein_norm',
-        'initials_match_ratio',
-        'initials_full_cover',
-        'extra_middle',
-        'first_name_mismatch',
-        'same_last_name',
-    ]
+    name1 = (name1 or "").lower()
+    name2 = (name2 or "").lower()
 
-    # Calculate features
-    first = first_name_jaro(name1, name2)
+    feature_names = CORE_FEATURES
+
+    first = first_name_jw(name1, name2)
     last = last_name_jaro(name1, name2)
-    jw = td.jaro_winkler.normalized_similarity(name1, name2)
-    lc = longest_common_substring(name1, name2)
-    jac = jaccard(name1, name2)
+    jw_full = td.jaro_winkler.normalized_similarity(name1, name2)
     lev = levenshtein_norm(name1, name2)
-    init_ratio = initials_match_ratio(name1, name2)
     init_cover = initials_full_cover(name1, name2)
-    tokdiff = token_count_diff(name1, name2)
-    extra_middle = 1 if (tokdiff > 0 and last > 0.99) else 0
-    first_name_mismatch = 1 if (last > 0.95 and first < 0.2) else 0
-    t1 = strip_suffix(name1.split())
-    t2 = strip_suffix(name2.split())
-    last1 = t1[-1].lower() if t1 else ""
-    last2 = t2[-1].lower() if t2 else ""
-    same_last_name = 1 if last1 and last1 == last2 else 0
+    fname_mismatch = first_name_mismatch_flag(name1, name2)
+    first_init_match = first_initial_match(name1, name2)
+    first_init_expansion = first_initial_expansion(name1, name2)
+    middle_init_match = middle_initial_match(name1, name2)
+    acronym_sim = acronym_similarity(name1, name2)
+    mixed_acr_full = mixed_acronym_full(name1, name2)
+
     features = [
         first,
         last,
-        jw,
-        lc,
-        jac,
+        jw_full,
         lev,
-        init_ratio,
         init_cover,
-        extra_middle,
-        first_name_mismatch,
-        same_last_name,
+        fname_mismatch,
+        first_init_match,
+        first_init_expansion,
+        middle_init_match,
+        acronym_sim,
+        mixed_acr_full,
     ]
 
-    # Return as DataFrame with correct feature names
     return pd.DataFrame([features], columns=feature_names)
 
 
 if __name__ == "__main__":
-    name1 = "joe biden"
-    name2 = "joseph biden"
-    name3 = "joseph robinette biden"
-
-    # Startswith same
-    start1 = first_name_jaro(name1, name2)
-    start2 = first_name_jaro(name1, name3)
-    start3 = first_name_jaro(name2, name3)
-    print(f"Jaro first name {name1} - {name2} : {start1}")
-    print(f"Jaro first name {name1} - {name3} : {start2}")
-    print(f"Jaro first name {name2} - {name3} : {start3}")
-
-    # Endswith same
-    end1 = last_name_jaro(name1, name2)
-    end2 = last_name_jaro(name1, name3)
-    end3 = last_name_jaro(name2, name3)
-    print(f"Jaro last name {name1} - {name2} : {end1}")
-    print(f"Jaro last name {name1} - {name3} : {end2}")
-    print(f"Jaro last name {name2} - {name3} : {end3}")
-
-    # Jaccard index
-    jaccard_index1 = jaccard(name1, name2)
-    jaccard_index2 = jaccard(name1, name3)
-    jaccard_index3 = jaccard(name2, name3)
-    print(f"Jaccard index score between {name1} - {name2} : {jaccard_index1}")
-    print(f"Jaccard index score between {name1} - {name3} : {jaccard_index2}")
-    print(f"Jaccard index score between {name2} - {name3} : {jaccard_index3}")
-
-    # Longest common substring
-    lcsubstr1 = longest_common_substring(name1, name2)
-    lcsubstr2 = longest_common_substring(name1, name3)
-    lcsubstr3 = longest_common_substring(name2, name3)
-    print(f"Longest common substring for {name1} - {name2} : {lcsubstr1}")
-    print(f"Longest common substring for {name1} - {name3} : {lcsubstr2}")
-    print(f"Longest common substring for {name2} - {name3} : {lcsubstr3}")
-
     data = [
         {"name1": "joe biden", "name2": "joseph biden"},
         {"name1": "joe biden", "name2": "joseph robinette biden"},
@@ -385,11 +471,18 @@ if __name__ == "__main__":
         {"name1": "barack obama", "name2": "barack h obama"},
         {"name1": "donald trump", "name2": "donald j trump"},
         {"name1": "joe biden", "name2": "barack obama"},
+        {"name1": "a. mitch mcconnell", "name2": "abraham mcconnell"},
+        {"name1": "j. k. rowling", "name2": "joanne kathleen rowling"},
+        {"name1": "f. scott fitzgerald", "name2": "francis fitzgerald"},
+        {"name1": "a. lincoln", "name2": "abraham lincoln"},
+        {"name1": "r. j. smith", "name2": "robert john smith"},
     ]
 
-    test_df = pd.DataFrame(data)
-    features_df = compute_features(test_df)
-    print(f"{features_df}")
+    df = pd.DataFrame(data)
+    feats = compute_features(df)
+    print(feats)
 
-    features_np = extract_individual_features(name1, name2)
-    print(f"Individual features between {name1} and {name2}: {features_np}")
+    # Test single extraction
+    single = extract_individual_features("a. mitch mcconnell", "abraham mcconnell")
+    print("\nSingle feature extraction for 'a. mitch mcconnell' vs 'abraham mcconnell':")
+    print(single)
