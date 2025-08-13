@@ -10,15 +10,17 @@ MAX_LEN = 40  # Fixed maximum length for character-level encoding
 
 # Expected feature columns
 FEATURE_COLUMNS = [
-    'first_name_jaro',
+    'first_name_jw',
     'last_name_jaro',
     'jaro_winkler',
-    'lcsubstr',
-    'jaccard',
     'levenshtein_norm',
-    'token_count_diff',
-    'initials_match_ratio',
     'initials_full_cover',
+    'first_name_mismatch',
+    'first_initial_match',
+    'first_initial_expansion',
+    'middle_initial_match',
+    'acronym_similarity',
+    'mixed_acronym_full',
 ]
 
 # Mapping from character to integer
