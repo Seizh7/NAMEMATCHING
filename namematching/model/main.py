@@ -19,32 +19,35 @@ def main():
 
     # Load and prepare data
     (
-        (train_X1, train_X2, train_feats, y_train),
-        (test_X1, test_X2, test_feats, y_test),
-        scaler,
-        char_to_idx,
+        (train_name1_sequences, train_name2_sequences,
+         train_features, train_labels),
+        (test_name1_sequences, test_name2_sequences,
+         test_features, test_labels),
+        feature_scaler,
+        char_to_index_mapping,
     ) = load_and_prepare_data(CONFIG.data_dir / "pairs_and_features.csv")
 
     # Build the model
     model = build_namematching_model(
         max_len=MAX_LEN,
-        char_vocab_size=len(char_to_idx) + 1,
+        char_vocab_size=len(char_to_index_mapping) + 1,
         embed_dim=EMBED_DIM,
-        num_features=train_feats.shape[1],
+        num_features=train_features.shape[1],
     )
 
     # Train the model
-    history = model.fit(
-        [train_X1, train_X2, train_feats],
-        y_train,
-        validation_data=([test_X1, test_X2, test_feats], y_test),
-        epochs=10,
+    training_history = model.fit(
+        [train_name1_sequences, train_name2_sequences, train_features],
+        train_labels,
+        validation_data=([test_name1_sequences, test_name2_sequences,
+                         test_features], test_labels),
+        epochs=5,
         batch_size=32,
     )
 
     # Visualization of the training curves
-    plt.plot(history.history['accuracy'], label='Train Accuracy')
-    plt.plot(history.history['val_accuracy'], label='Val Accuracy')
+    plt.plot(training_history.history['accuracy'], label='Train Accuracy')
+    plt.plot(training_history.history['val_accuracy'], label='Val Accuracy')
     plt.title('Model Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
@@ -58,17 +61,18 @@ def main():
     model.save(MODEL_PATH)
 
     with open(TOKENIZER_PATH, "wb") as f:
-        pickle.dump(char_to_idx, f)
+        pickle.dump(char_to_index_mapping, f)
 
     with open(SCALER_PATH, "wb") as f:
-        pickle.dump(scaler, f)
+        pickle.dump(feature_scaler, f)
 
     # Evaluate on test set
-    predictions = (
-        model.predict([test_X1, test_X2, test_feats]) > 0.5
+    binary_predictions = (
+        model.predict([test_name1_sequences, test_name2_sequences,
+                      test_features]) > 0.5
     ).astype(int)
 
-    print(classification_report(y_test, predictions))
+    print(classification_report(test_labels, binary_predictions))
 
 
 if __name__ == "__main__":
