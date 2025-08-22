@@ -27,19 +27,26 @@ def normalize_name(name):
 def extract_tokens_with_initials(name):
     """
     Extract tokens from name, handling initials with dots.
-    Returns (tokens, initials_positions) where initials_positions marks which tokens are initials.
+
+    Args:
+        name (str): Full name string.
+
+    Returns:
+        tuple: (tokens, initials_positions) where initials_positions
+            marks which tokens are initials.
     """
     name = normalize_name(name)
     tokens = name.split()
     initials_positions = []
-    
+
     for i, token in enumerate(tokens):
         # Remove dots for analysis
         clean_token = token.rstrip('.')
-        # Consider as initial if: single letter, or single letter followed by dot
+        # Consider as initial if: single letter,
+        # or single letter followed by dot
         if len(clean_token) == 1 and clean_token.isalpha():
             initials_positions.append(i)
-    
+
     return tokens, initials_positions
 
 
@@ -59,76 +66,104 @@ def first_initial_match(name1, name2):
     """
     Check if first tokens match by initial.
     Returns 1 if first letters match, 0 otherwise.
+
+    Args:
+        name1 (str): First name string.
+        name2 (str): Second name string.
+
+    Returns:
+        int: 1 if first letters match, 0 otherwise.
     """
     tokens1 = name1.split()
     tokens2 = name2.split()
-    
+
     if not tokens1 or not tokens2:
         return 0
-    
+
     first1 = get_first_letter(tokens1[0])
     first2 = get_first_letter(tokens2[0])
-    
+
     return 1 if first1 == first2 else 0
 
 
 def first_initial_expansion(name1, name2):
     """
     Check if one name has an initial where the other has a full first name.
-    Returns similarity score between 0 and 1.
+
+    Args:
+        name1 (str): First name string.
+        name2 (str): Second name string.
+
+    Returns:
+        float: Similarity score between 0 and 1.
     """
     tokens1 = name1.split()
     tokens2 = name2.split()
-    
+
     if not tokens1 or not tokens2:
         return 0
-    
+
     first1, first2 = tokens1[0], tokens2[0]
-    
+
     # Case 1: name1 is initial, name2 is full name
     if is_initial_token(first1) and not is_initial_token(first2):
         initial = get_first_letter(first1)
         full_first = get_first_letter(first2)
         return 0.8 if initial == full_first else 0
-    
-    # Case 2: name2 is initial, name1 is full name  
+
+    # Case 2: name2 is initial, name1 is full name
     if is_initial_token(first2) and not is_initial_token(first1):
         initial = get_first_letter(first2)
         full_first = get_first_letter(first1)
         return 0.8 if initial == full_first else 0
-    
+
     return 0
 
 
 def middle_initial_match(name1, name2):
     """
     Check if middle initials match between names.
-    Returns 1 if all middle initials match, partial score for partial matches.
+
+    Args:
+        name1 (str): First name string.
+        name2 (str): Second name string.
+
+    Returns:
+        float: 1 if all middle initials match, partial score
+            for partial matches.
     """
     tokens1, _ = extract_tokens_with_initials(name1)
     tokens2, _ = extract_tokens_with_initials(name2)
-    
+
     # Get middle tokens (exclude first and last)
     if len(tokens1) <= 2 and len(tokens2) <= 2:
         return 0  # No middle names
-    
+
     middle1 = tokens1[1:-1] if len(tokens1) > 2 else []
     middle2 = tokens2[1:-1] if len(tokens2) > 2 else []
-    
+
     if not middle1 or not middle2:
         return 0
-    
+
     # Extract middle initials
-    initials_m1 = [get_first_letter(token) for token in middle1 if is_initial_token(token)]
-    initials_m2 = [get_first_letter(token) for token in middle2 if is_initial_token(token)]
-    
+    initials_m1 = [
+        get_first_letter(token)
+        for token in middle1
+        if is_initial_token(token)
+    ]
+    initials_m2 = [
+        get_first_letter(token)
+        for token in middle2
+        if is_initial_token(token)
+    ]
+
     if not initials_m1 or not initials_m2:
         return 0
-    
+
     # Count matching initials
     matches = sum(1 for i1 in initials_m1 if i1 in initials_m2)
     total = max(len(initials_m1), len(initials_m2))
-    
+
     return matches / total if total > 0 else 0
 
 
@@ -136,49 +171,74 @@ def acronym_similarity(name1, name2):
     """
     Compute similarity when one or both names contain multiple initials.
     Handles cases like 'A. B. Johnson' vs 'Andrew Bob Johnson'.
+
+    Args:
+        name1 (str): First name string.
+        name2 (str): Second name string.
+
+    Returns:
+        float: Similarity score between 0 and 1.
     """
     tokens1, initials_pos1 = extract_tokens_with_initials(name1)
     tokens2, initials_pos2 = extract_tokens_with_initials(name2)
-    
+
     # If neither name has initials, return 0
     if not initials_pos1 and not initials_pos2:
         return 0
-    
+
     # Extract initials from each name
     initials1 = [get_first_letter(tokens1[i]) for i in initials_pos1]
     initials2 = [get_first_letter(tokens2[i]) for i in initials_pos2]
-    
-    # If one name is all initials, compare with first letters of other name's tokens
-    if len(initials_pos1) == len(tokens1) - 1:  # All but last token are initials
+
+    # If one name is all initials, compare with first letters of
+    # other name's tokens
+    # All but last token are initials
+    if len(initials_pos1) == len(tokens1) - 1:
         other_initials = [get_first_letter(token) for token in tokens2[:-1]]
-        matches = sum(1 for i1, i2 in zip(initials1, other_initials) if i1 == i2)
-        return matches / max(len(initials1), len(other_initials)) if initials1 or other_initials else 0
-    
-    if len(initials_pos2) == len(tokens2) - 1:  # All but last token are initials
+        matches = sum(
+            1 for i1, i2 in zip(initials1, other_initials) if i1 == i2
+        )
+        return (
+            matches / max(len(initials1), len(other_initials))
+            if initials1 or other_initials else 0
+        )
+    # All but last token are initials
+    if len(initials_pos2) == len(tokens2) - 1:
         other_initials = [get_first_letter(token) for token in tokens1[:-1]]
-        matches = sum(1 for i1, i2 in zip(initials2, other_initials) if i1 == i2)
-        return matches / max(len(initials2), len(other_initials)) if initials2 or other_initials else 0
-    
+        matches = sum(
+            1 for i1, i2 in zip(initials2, other_initials) if i1 == i2
+        )
+        return (
+            matches / max(len(initials2), len(other_initials))
+            if initials2 or other_initials else 0
+        )
+
     # Both have some initials - compare the initials directly
     if initials1 and initials2:
         common = set(initials1) & set(initials2)
         total = set(initials1) | set(initials2)
         return len(common) / len(total) if total else 0
-    
+
     return 0
 
 
 def mixed_acronym_full(name1, name2):
     """
     Handle mixed cases like 'A. Mitch McConnell' vs 'Abraham McConnell'.
-    Returns high score if initials match but some full names are missing.
+
+    Args:
+        name1 (str): First name string.
+        name2 (str): Second name string.
+
+    Returns:
+        float: High score if initials match but some full names are missing.
     """
     tokens1 = name1.split()
     tokens2 = name2.split()
-    
+
     if len(tokens1) != len(tokens2) and abs(len(tokens1) - len(tokens2)) <= 2:
         # Different number of tokens, might be mixed case
-        
+
         # Create signature for each name (I=initial, F=full, L=last)
         def get_signature(tokens):
             sig = []
@@ -190,10 +250,10 @@ def mixed_acronym_full(name1, name2):
                 else:
                     sig.append('F')
             return sig
-        
+
         sig1 = get_signature(tokens1)
         sig2 = get_signature(tokens2)
-        
+
         # Check if signatures are compatible
         if 'I' in sig1 or 'I' in sig2:
             # Compare last names first
@@ -202,7 +262,7 @@ def mixed_acronym_full(name1, name2):
                 # Compare first initials
                 first_match = first_initial_match(name1, name2)
                 return 0.7 * first_match + 0.3 * last_sim
-    
+
     return 0
 
 
@@ -241,7 +301,16 @@ def levenshtein_norm(name1, name2):
 
 
 def abbreviation_forms(name):
-    """Extracts ordered initials if 'name' is a valid abbreviation."""
+    """
+    Extracts ordered initials if 'name' is a valid abbreviation.
+
+    Args:
+        name (str): The name string to extract initials from.
+
+    Returns:
+        list: A list of ordered initials if 'name' is a valid abbreviation,
+            else an empty list.
+    """
     tokens = name.split()
 
     # Case 1: space-separated initials
@@ -258,7 +327,16 @@ def abbreviation_forms(name):
 
 
 def covers(abbrev_name, full_name):
-    """True if abbrev_name matches initials of full_name."""
+    """
+    True if abbrev_name matches initials of full_name.
+
+    Args:
+        abbrev_name (str): The abbreviated name to check.
+        full_name (str): The full name to match against.
+
+    Returns:
+        bool: True if abbrev_name matches initials of full_name, else False.
+    """
     abbrev_letters = abbreviation_forms(abbrev_name)
     if not abbrev_letters:
         return False
@@ -280,7 +358,18 @@ def initials_full_cover(name1, name2):
 
 def first_name_mismatch_flag(name1, name2, last_thresh=0.95, first_thresh=0.2):
     """
-    Binary flag when last names are very similar but first names are very dissimilar.
+    Binary flag when last names are very similar but first names
+    are very dissimilar.
+
+    Args:
+        name1 (str): The first name string.
+        name2 (str): The second name string.
+        last_thresh (float): Threshold for last name similarity.
+        first_thresh (float): Threshold for first name similarity.
+
+    Returns:
+        int: 1 if last names are similar but first names are dissimilar,
+            else 0.
     """
     return int(last_name_jaro(name1, name2) >= last_thresh and
                first_name_jw(name1, name2) < first_thresh)
@@ -288,9 +377,8 @@ def first_name_mismatch_flag(name1, name2, last_thresh=0.95, first_thresh=0.2):
 
 def compute_features(batch):
     """
-    Compute a set of string similarity and rule-based features for a batch of name pairs.
-    This is designed for name-matching tasks where we want to capture
-    similarities, abbreviations, initial matches, and potential mismatches.
+    Compute a set of string similarity and rule-based features for a batch
+    of name pairs.
 
     Args:
         batch (pd.DataFrame):
@@ -325,18 +413,21 @@ def compute_features(batch):
     # Full-string Jaro-Winkler similarity: captures general similarity of
     # the complete names, giving extra weight to common prefixes.
     batch["jaro_winkler"] = batch.apply(
-        lambda x: td.jaro_winkler.normalized_similarity(x["name1"], x["name2"]),
+        lambda x: td.jaro_winkler.normalized_similarity(
+            x["name1"], x["name2"]
+        ),
         axis=1
     )
 
     # Normalized Levenshtein similarity: 1 - (edit distance / max length).
-    # Captures overall character-level edits required to transform one name into the other.
+    # Captures overall character-level edits required to transform one name
+    # into the other.
     batch["levenshtein_norm"] = batch.apply(
         lambda x: levenshtein_norm(x["name1"], x["name2"]),
         axis=1
     )
 
-    # --- Initials-based coverage ---
+    # Initials-based coverage
     # 1 if one name is an abbreviation (ordered initials) of the other,
     # else 0.
     batch["initials_full_cover"] = batch.apply(
@@ -344,8 +435,9 @@ def compute_features(batch):
         axis=1
     )
 
-    # --- Rule-based mismatch flags ---
-    # Flags possible homonyms: last names are very similar, but first names are dissimilar.
+    # Rule-based mismatch flags
+    # Flags possible homonyms: last names are very similar, but first names
+    # are dissimilar.
     batch["first_name_mismatch"] = batch.apply(
         lambda x: first_name_mismatch_flag(x["name1"], x["name2"]),
         axis=1
@@ -356,27 +448,27 @@ def compute_features(batch):
         lambda x: first_initial_match(x["name1"], x["name2"]),
         axis=1
     )
-    
+
     # 1 if the first name in one string is just an initial and matches the
     # first letter of the other full first name.
     batch["first_initial_expansion"] = batch.apply(
         lambda x: first_initial_expansion(x["name1"], x["name2"]),
         axis=1
     )
-    
+
     # 1 if middle initials (when present) match, else 0.
     batch["middle_initial_match"] = batch.apply(
         lambda x: middle_initial_match(x["name1"], x["name2"]),
         axis=1
     )
-    
+
     # Similarity score between acronyms formed from each name’s tokens.
     # Useful when both names are abbreviations.
     batch["acronym_similarity"] = batch.apply(
         lambda x: acronym_similarity(x["name1"], x["name2"]),
         axis=1
     )
-    
+
     # 1 if one name is an acronym and the other is a full expansion matching
     # the acronym letters.
     batch["mixed_acronym_full"] = batch.apply(
@@ -483,6 +575,12 @@ if __name__ == "__main__":
     print(feats)
 
     # Test single extraction
-    single = extract_individual_features("a. mitch mcconnell", "abraham mcconnell")
-    print("\nSingle feature extraction for 'a. mitch mcconnell' vs 'abraham mcconnell':")
+    single = extract_individual_features(
+        "a. mitch mcconnell",
+        "abraham mcconnell"
+    )
+    print(
+        "\nSingle feature extraction for 'a. mitch mcconnell' "
+        "vs 'abraham mcconnell':"
+    )
     print(single)
