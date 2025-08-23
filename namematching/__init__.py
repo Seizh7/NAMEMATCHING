@@ -1,4 +1,6 @@
-# namematching/__init__.py
+# Copyright (c) 2025 Seizh7
+# Licensed under the Apache License, Version 2.0
+# (http://www.apache.org/licenses/LICENSE-2.0)
 
 """NameMatching - AI-based name comparison system."""
 
