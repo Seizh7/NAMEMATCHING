@@ -4,6 +4,10 @@ setup(
     name="namematching",
     version="1.0",
     packages=find_packages(),
+    package_data={
+        'namematching': ['data/*'],
+    },
+    include_package_data=True,
     install_requires=[
         "tensorflow>=2.10.0",
         "pandas>=1.3.0",
