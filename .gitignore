@@ -6,3 +6,4 @@ data/*
 !data/.gitkeep
 export/*
 !export/.gitkeep
+namematching.egg-info/
