@@ -10,7 +10,6 @@ setup(
         "numpy>=1.21.0",
         "scikit-learn>=1.0.0",
         "textdistance>=4.2.0",
-        "SPARQLWrapper>=1.8.0",
     ],
     author="Seizh7",
     description="Système de comparaison de noms basé sur l'IA",
