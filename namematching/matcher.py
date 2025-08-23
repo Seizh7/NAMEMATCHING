@@ -3,7 +3,7 @@ import pickle
 import tensorflow as tf
 from namematching.metrics.extract_features import extract_individual_features
 from namematching.model.predictor import char_tokenizer
-from config import CONFIG
+from namematching.config import CONFIG
 
 
 class NameMatcher:
