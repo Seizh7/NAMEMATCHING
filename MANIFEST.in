@@ -1,0 +1,3 @@
+include README.md
+include namematching/data/*
+recursive-include namematching/data *
