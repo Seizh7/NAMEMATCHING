@@ -3,6 +3,7 @@ import pickle
 import tensorflow as tf
 from namematching.metrics.extract_features import extract_individual_features
 from namematching.model.predictor import char_tokenizer
+from config import CONFIG
 
 
 class NameMatcher:
@@ -12,7 +13,7 @@ class NameMatcher:
     and batch evaluation.
     """
 
-    def __init__(self, model_path, scaler_path):
+    def __init__(self):
         """
         Initialize the matcher with a pre-trained model and scaler.
 
@@ -21,9 +22,14 @@ class NameMatcher:
             scaler_path : Path to the saved sklearn scaler.
         """
         # Load trained Keras model
-        self.model = tf.keras.models.load_model(model_path)
+        model_path = CONFIG.export_dir / "namematching_model.keras"
+        self.model = tf.keras.models.load_model(
+            model_path,
+            safe_mode=False
+        )
 
         # Load fitted feature scaler
+        scaler_path = CONFIG.export_dir / "scaler.pkl"
         with open(scaler_path, "rb") as f:
             self.scaler = pickle.load(f)
 
@@ -39,15 +45,18 @@ class NameMatcher:
             float: Similarity score in [0, 1].
         """
         # Encode character-level inputs
-        x1 = np.expand_dims(char_tokenizer(name1), axis=0)
-        x2 = np.expand_dims(char_tokenizer(name2), axis=0)
+        name1_char_indices = np.expand_dims(char_tokenizer(name1), axis=0)
+        name2_char_indices = np.expand_dims(char_tokenizer(name2), axis=0)
 
         # Extract and scale handcrafted features
         features = extract_individual_features(name1, name2)
         features_scaled = self.scaler.transform(features)
 
         # Run model prediction
-        score = self.model.predict([x1, x2, features_scaled], verbose=0)[0][0]
+        score = self.model.predict(
+            [name1_char_indices, name2_char_indices, features_scaled],
+            verbose=0
+        )[0][0]
         return float(score)
 
     def is_match(self, name1, name2, threshold: float = 0.5):
