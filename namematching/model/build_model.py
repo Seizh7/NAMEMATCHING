@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Seizh7
+# Licensed under the Apache License, Version 2.0
+# (http://www.apache.org/licenses/LICENSE-2.0)
+
 import tensorflow as tf
 from tensorflow.keras.layers import (
     Input,
@@ -174,7 +178,7 @@ def apply_final_transformations(
             tf.logical_or(
                 # Both names have some similarity
                 tf.logical_and(t[0] >= 0.3, t[1] >= 0.3),
-                # High first name similarity 
+                # High first name similarity
                 tf.logical_and(t[0] >= 0.7, t[1] >= 0.1),
                 # High last name similarity
                 tf.logical_and(t[0] >= 0.1, t[1] >= 0.7)
