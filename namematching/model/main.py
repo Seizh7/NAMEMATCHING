@@ -3,7 +3,7 @@ import pickle
 from sklearn.metrics import classification_report
 from namematching.model.prepare_data import load_and_prepare_data
 from namematching.model.build_model import build_namematching_model
-from config import CONFIG
+from namematching.config import CONFIG
 import matplotlib.pyplot as plt
 
 MODEL_PATH = os.path.join(CONFIG.export_dir, "namematching_model.keras")
