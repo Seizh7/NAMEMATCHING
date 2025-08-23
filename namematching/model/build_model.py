@@ -7,10 +7,11 @@ from tensorflow.keras.layers import (
     Dense,
     Concatenate,
     Dropout,
-    Activation,
     Lambda,
     Multiply,
     Subtract,
+    Add,
+    ReLU
 )
 from tensorflow.keras.models import Model
 
@@ -22,19 +23,21 @@ def encode_branch(input_layer, embedding_layer, first_bilstm, second_bilstm):
     Args:
         input_layer (tf.Tensor): Integer index sequence (batch, max_len).
         embedding_layer (tf.keras.layers.Embedding): Shared embedding.
+        first_bilstm (tf.keras.layers.Bidirectional): First BiLSTM layer.
+        second_bilstm (tf.keras.layers.Bidirectional): Second BiLSTM layer.
 
     Returns:
         tf.Tensor: Fixed-size contextual encoding vector.
     """
     embedded_sequence = embedding_layer(input_layer)
-    # Apply shared BiLSTM stack (weight sharing across both name branches)
     first_bilstm_output = first_bilstm(embedded_sequence)
     final_encoding = second_bilstm(first_bilstm_output)
     return final_encoding
 
 
 def build_classifier(fused_representation, feature_input):
-    """Classification head with learned homonym penalty branch.
+    """
+    Classification head with learned homonym penalty branch.
 
     Args:
         fused_representation (tf.Tensor): Fused representation from both
@@ -49,63 +52,153 @@ def build_classifier(fused_representation, feature_input):
     hidden_layer = Dense(24, activation='relu')(hidden_layer)
     hidden_layer = Dropout(0.5)(hidden_layer)
     base_logits = Dense(
-        1,
-        activation='linear',
-        name='base_logits'
+        1, activation='linear', name='base_logits'
     )(hidden_layer)
 
-    # Penalty branch — encourage positive value when should decrease
+    # Penalty branch
     penalty_hidden = Dense(16, activation='relu')(feature_input)
     penalty_hidden = Dropout(0.2)(penalty_hidden)
     penalty = Dense(
-        1, activation='relu',
-        name='homonym_penalty'
+        1, activation='relu', name='homonym_penalty'
     )(penalty_hidden)
 
     adjusted_logits = Subtract(name='logits_adjusted')([base_logits, penalty])
-    output = Activation('sigmoid', name='output')(adjusted_logits)
-    return output
+    return adjusted_logits  # Return logits instead of sigmoid
 
 
-def adjust_with_penalties(
-    penalty_args,
-    alpha_same_last_diff_first,
-    alpha_same_first_diff_last
+def create_penalties(
+        features_scaled,
+        idx_first_name_jaro, idx_last_name_jaro,
+        thresh_first_under_same_last,
+        thresh_last_under_same_first
 ):
-    """Adjust the output probability by applying penalties in logit space.
+    """
+    Create penalty terms from scaled features.
 
     Args:
-        penalty_args: Tuple of (prob, penalty1, penalty2)
-        alpha_same_last_diff_first: Penalty weight for same last name but
-                                    different first name
-        alpha_same_first_diff_last: Penalty weight for same first name but
-                                    different last name
+        features_scaled (tf.Tensor): Scaled feature tensor.
+        idx_first_name_jaro (int): Index for first name Jaro similarity.
+        idx_last_name_jaro (int): Index for last name Jaro similarity.
+        thresh_first_under_same_last (float): Threshold for first name
+            under same last.
+        thresh_last_under_same_first (float): Threshold for last name
+            under same first.
 
     Returns:
-        Adjusted probability after applying penalties
+        tuple: A tuple containing the extracted similarities and penalty terms.
+
     """
-    probability, penalty_same_last, penalty_same_first = penalty_args
-    epsilon = 1e-6
-    logit = (tf.math.log(probability + epsilon) -
-             tf.math.log(1. - probability + epsilon))
-    logit -= alpha_same_last_diff_first * penalty_same_last
-    logit -= alpha_same_first_diff_last * penalty_same_first
-    return tf.math.sigmoid(logit)
+    # Extract similarities
+    first_sim = Lambda(
+        lambda f: f[:, idx_first_name_jaro:idx_first_name_jaro + 1],
+        name="first_name_sim"
+    )(features_scaled)
+    last_sim = Lambda(
+        lambda f: f[:, idx_last_name_jaro:idx_last_name_jaro + 1],
+        name="last_name_sim"
+    )(features_scaled)
+
+    # Create penalty terms
+    threshold_first = tf.constant(
+        thresh_first_under_same_last,
+        dtype=tf.float32
+    )
+    threshold_last = tf.constant(
+        thresh_last_under_same_first,
+        dtype=tf.float32
+    )
+
+    pen_last_low_first = Multiply(name="pen_sameLast_diffFirst")(
+        [last_sim, ReLU()(Lambda(lambda s: threshold_first - s)(first_sim))]
+    )
+    pen_first_low_last = Multiply(name="pen_sameFirst_diffLast")(
+        [first_sim, ReLU()(Lambda(lambda s: threshold_last - s)(last_sim))]
+    )
+
+    return first_sim, last_sim, pen_last_low_first, pen_first_low_last
 
 
-def gate_output(gating_args):
+def apply_final_transformations(
+    logits, first_sim, last_sim, pen1, pen2,
+    alpha_same_last_diff_first, alpha_same_first_diff_last
+):
     """
-    Gating mechanism to adjust the final probability when either first or last
+    Apply penalties, gating, and reinforcements to get final probability.
 
     Args:
-        gating_args: Tuple of (prob, first_sim, last_sim)
+        logits (tf.Tensor): Logits from the model.
+        first_sim (tf.Tensor): First name similarity.
+        last_sim (tf.Tensor): Last name similarity.
+        pen1 (tf.Tensor): Penalty term 1.
+        pen2 (tf.Tensor): Penalty term 2.
+        alpha_same_last_diff_first (float): Weight for same last name,
+            different first name penalty.
+        alpha_same_first_diff_last (float): Weight for same first name,
+            different last name penalty.
 
     Returns:
-        Gated probability
+        tf.Tensor: Final probability after applying all transformations.
     """
-    probability, first_similarity, last_similarity = gating_args
-    gate = first_similarity * last_similarity
-    return probability * gate
+
+    # Apply penalties in logit space
+    adjusted_logits = Lambda(
+        lambda args: (
+            args[0]
+            - alpha_same_last_diff_first * args[1]
+            - alpha_same_first_diff_last * args[2]
+        ),
+        name="penalty_adjustment"
+    )([logits, pen1, pen2])
+
+    # Convert to probability
+    prob = tf.keras.activations.sigmoid(adjusted_logits)
+
+    # Apply gating and reinforcements
+    first_square = Multiply()([first_sim, first_sim])
+    last_square = Multiply()([last_sim, last_sim])
+    last_cube = Multiply()([last_square, last_sim])
+
+    # Combined gate with geometric mean and strict thresholds
+    combined_gate = Lambda(
+        lambda t: tf.where(
+            tf.logical_or(t[0] >= 0.6, t[1] >= 0.6),
+            tf.sqrt(t[0] * t[1]),
+            tf.constant(0.05, dtype=t[0].dtype)
+        )
+    )([first_sim, last_sim])
+
+    # Add minimum similarity threshold to prevent high scores for completely
+    # different names
+    min_similarity_gate = Lambda(
+        lambda t: tf.where(
+            tf.logical_or(
+                # Both names have some similarity
+                tf.logical_and(t[0] >= 0.3, t[1] >= 0.3),
+                # High first name similarity 
+                tf.logical_and(t[0] >= 0.7, t[1] >= 0.1),
+                # High last name similarity
+                tf.logical_and(t[0] >= 0.1, t[1] >= 0.7)
+            ),
+            tf.constant(1.0, dtype=t[0].dtype),
+            # Severely penalize low similarities
+            tf.maximum(t[0] * t[1] * 2.0, tf.constant(0.01, dtype=t[0].dtype))
+        )
+    )([first_sim, last_sim])
+
+    # Apply all transformations including the new minimum similarity gate
+    final_prob = Multiply(name="output")(
+        [
+            prob,
+            first_sim,
+            last_sim,
+            first_square,
+            last_cube,
+            combined_gate,
+            min_similarity_gate
+        ]
+    )
+
+    return final_prob
 
 
 def build_namematching_model(
@@ -116,7 +209,7 @@ def build_namematching_model(
     scaler_mean=None,
     scaler_scale=None,
     idx_first_name_jaro=0,
-    idx_last_name_jaro=3,
+    idx_last_name_jaro=1,
     alpha_same_last_diff_first=6.0,
     alpha_same_first_diff_last=5.0,
     thresh_first_under_same_last=0.8,
@@ -131,100 +224,105 @@ def build_namematching_model(
         char_vocab_size (int): Size of the character vocabulary.
         embed_dim (int): Dimension of the embedding vector.
         num_features (int): Number of additional handcrafted features.
+        scaler_mean (np.ndarray, optional): Mean values for feature scaling.
+        scaler_scale (np.ndarray, optional): Scale values for feature scaling.
+        idx_first_name_jaro (int, optional): Index for first name
+            Jaro similarity.
+        idx_last_name_jaro (int, optional): Index for last name
+            Jaro similarity.
+        alpha_same_last_diff_first (float, optional): Penalty weight for same
+            last name, different first name.
+        alpha_same_first_diff_last (float, optional): Penalty weight for same
+            first name, different last name.
+        thresh_first_under_same_last (float, optional): Threshold for first
+            name under same last name.
+        thresh_last_under_same_first (float, optional): Threshold for last
+            name under same first name.
 
     Returns:
         tf.keras.Model: A compiled Keras model ready for training.
     """
-    # Inputs: two character-index sequences + feature vector
+    # Inputs
     name1_input = Input(shape=(max_len,), name="name1_indices")
     name2_input = Input(shape=(max_len,), name="name2_indices")
     features_input = Input(shape=(num_features,), name="extra_features")
 
-    # Shared embedding for both inputs; mask_zero ignores padding index 0
+    # Shared embedding and BiLSTM layers
     embedding = Embedding(
         input_dim=char_vocab_size,
         output_dim=embed_dim,
         mask_zero=True,
-        name="char_embedding",
+        name="char_embedding"
+    )
+    first_bilstm = Bidirectional(
+        LSTM(64, return_sequences=True),
+        name="bilstm_1"
+    )
+    second_bilstm = Bidirectional(
+        LSTM(32, return_sequences=False),
+        name="bilstm_2"
     )
 
-    # Shared BiLSTM encoder layers (weights reused for both names)
-    first_bilstm = Bidirectional(LSTM(64, return_sequences=True),
-                                 name="bilstm_1")
-    second_bilstm = Bidirectional(LSTM(32, return_sequences=False),
-                                  name="bilstm_2")
+    # Encode both names
+    name1_encoded = encode_branch(
+        name1_input, embedding, first_bilstm, second_bilstm
+    )
+    name2_encoded = encode_branch(
+        name2_input, embedding, first_bilstm, second_bilstm
+    )
 
-    # Encode both names with the same BiLSTM encoder branch
-    name1_encoded = encode_branch(name1_input, embedding,
-                                  first_bilstm, second_bilstm)
-    name2_encoded = encode_branch(name2_input, embedding,
-                                  first_bilstm, second_bilstm)
+    # Create interaction features
+    difference = Subtract()([name1_encoded, name2_encoded])
+    absolute_difference = Add()([
+        ReLU()(difference),
+        ReLU()(Lambda(lambda t: -t)(difference))
+    ])
+    elem_prod = Multiply()([name1_encoded, name2_encoded])
 
-    # Interaction features to help the network model similarity explicitly
-    absolute_difference = Lambda(
-        lambda t: tf.math.abs(t[0] - t[1]),
-        name='abs_diff'
-    )([name1_encoded, name2_encoded])
-
-    element_product = Multiply(
-        name='elem_prod'
-    )([name1_encoded, name2_encoded])
-
-    # Fuse encoded names with handcrafted features
-    merged_features = Concatenate(name="fusion")([
-        name1_encoded, name2_encoded, absolute_difference,
-        element_product, features_input
+    # Fuse all features
+    fused = Concatenate(name="fusion")([
+        name1_encoded,
+        name2_encoded,
+        absolute_difference,
+        elem_prod,
+        features_input
     ])
 
-    output = build_classifier(merged_features, features_input)
+    # Get base logits from classifier
+    logits = build_classifier(fused, features_input)
 
-    # Deterministic penalties applied in logit space.
+    # Apply penalties and transformations if scaler is provided
     if scaler_mean is not None and scaler_scale is not None:
-        scaler_mean_tensor = tf.constant(scaler_mean, dtype=tf.float32)
-        scaler_scale_tensor = tf.constant(scaler_scale, dtype=tf.float32)
-        original_features = Lambda(
-            lambda f: f * scaler_scale_tensor + scaler_mean_tensor,
-            name='orig_features'
-        )(features_input)
-        first_name_similarity = Lambda(
-            lambda f: tf.gather(f, [idx_first_name_jaro], axis=1),
-            name='first_name_sim'
-        )(original_features)
-        last_name_similarity = Lambda(
-            lambda f: tf.gather(f, [idx_last_name_jaro], axis=1),
-            name='last_name_sim'
-        )(original_features)
-        # same last + low first sim: last_sim * relu(thresh - first_sim)
-        penalty_same_last_diff_first = Lambda(
-            lambda t: t[0] * tf.nn.relu(thresh_first_under_same_last - t[1]),
-            name='pen_sameLast_diffFirst'
-        )([last_name_similarity, first_name_similarity])
-        # same first + low last sim: first_sim * relu(thresh - last_sim)
-        penalty_same_first_diff_last = Lambda(
-            lambda t: t[0] * tf.nn.relu(thresh_last_under_same_first - t[1]),
-            name='pen_sameFirst_diffLast'
-        )([first_name_similarity, last_name_similarity])
-
-        # Adjust output with penalties in logit space
-        output = Lambda(
-            lambda args: adjust_with_penalties(
-                args, alpha_same_last_diff_first, alpha_same_first_diff_last
+        # Restore original scale
+        features_scaled = Lambda(
+            lambda f: (
+                f * tf.constant(scaler_scale, dtype=tf.float32)
+                + tf.constant(scaler_mean, dtype=tf.float32)
             ),
-            name='output_with_penalties'
-        )([output, penalty_same_last_diff_first, penalty_same_first_diff_last])
+            name="orig_features"
+        )(features_input)
 
-        # Gating: damp final prob when either first or last similarity low
-        output = Lambda(
-            gate_output,
-            name='output_gated'
-        )([output, first_name_similarity, last_name_similarity])
+        # Create penalties
+        first_sim, last_sim, pen1, pen2 = create_penalties(
+            features_scaled, idx_first_name_jaro, idx_last_name_jaro,
+            thresh_first_under_same_last, thresh_last_under_same_first
+        )
 
-    model = Model(inputs=[name1_input, name2_input, features_input],
-                  outputs=output,
-                  name="NameMatchingBiLSTM")
-    model.compile(
-        optimizer="adam",
-        loss="binary_crossentropy",
-        metrics=["accuracy"],
+        # Apply final transformations
+        output = apply_final_transformations(
+            logits, first_sim, last_sim, pen1, pen2,
+            alpha_same_last_diff_first, alpha_same_first_diff_last
+        )
+    else:
+        output = tf.keras.activations.sigmoid(logits)
+
+    model = Model(
+        inputs=[name1_input, name2_input, features_input],
+        outputs=output,
+        name="NameMatchingBiLSTM"
     )
+    model.compile(
+        optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+    )
+
     return model
