@@ -1,6 +1,6 @@
 import requests
 import time
-import utils
+import namematching.utils as utils
 from SPARQLWrapper import SPARQLWrapper, JSON
 
 # terms to exclude

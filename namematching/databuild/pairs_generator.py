@@ -1,5 +1,5 @@
 from itertools import combinations
-import utils
+import namematching.utils as utils
 import pandas as pd
 import os
 import csv

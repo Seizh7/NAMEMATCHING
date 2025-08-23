@@ -3,7 +3,7 @@
 """NameMatching - AI-based name comparison system."""
 
 from namematching.matcher import NameMatcher
-from utils import normalize_name
+from namematching.utils import normalize_name
 
 __version__ = "1.0"
 __all__ = ["NameMatcher", "normalize_name", "compare_names"]
