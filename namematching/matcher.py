@@ -3,7 +3,7 @@ import pickle
 import tensorflow as tf
 from namematching.metrics.extract_features import extract_individual_features
 from namematching.model.predictor import char_tokenizer
-from namematching.config import CONFIG
+from namematching.resources import get_model_path, get_scaler_path
 
 
 class NameMatcher:
@@ -22,14 +22,14 @@ class NameMatcher:
             scaler_path : Path to the saved sklearn scaler.
         """
         # Load trained Keras model
-        model_path = CONFIG.export_dir / "namematching_model.keras"
+        model_path = get_model_path()
         self.model = tf.keras.models.load_model(
             model_path,
             safe_mode=False
         )
 
         # Load fitted feature scaler
-        scaler_path = CONFIG.export_dir / "scaler.pkl"
+        scaler_path = get_scaler_path()
         with open(scaler_path, "rb") as f:
             self.scaler = pickle.load(f)
 
