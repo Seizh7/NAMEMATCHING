@@ -41,7 +41,7 @@ def main():
         train_labels,
         validation_data=([test_name1_sequences, test_name2_sequences,
                          test_features], test_labels),
-        epochs=5,
+        epochs=3,
         batch_size=32,
     )
 
