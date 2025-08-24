@@ -51,6 +51,15 @@ SYMMETRY_TEST_PAIRS = [
     ("joe biden", "joseph biden"),
 ]
 
+# John bug test cases - specific bug with "john" names
+JOHN_BUG_TEST_PAIRS = [
+    ("john boozman", "john boozman"),
+    ("john kennedy", "john kennedy"),
+    ("john smith", "john smith"),
+    ("john doe", "john doe"),
+    ("john wilson", "john wilson"),
+]
+
 
 @pytest.mark.parametrize("name1, name2", POSITIVE_PAIRS)
 def test_positive_pairs(name1, name2):
@@ -85,11 +94,11 @@ def test_symmetry(name1, name2):
     """
     score_ab = compare_names(name1, name2)
     score_ba = compare_names(name2, name1)
-    
+
     print(f"[SYM] {name1} <> {name2} -> {score_ab:.6f}")
     print(f"[SYM] {name2} <> {name1} -> {score_ba:.6f}")
     print(f"[SYM] Difference: {abs(score_ab - score_ba):.6f}")
-    
+
     # Allow for very small floating point differences (< 0.001)
     tolerance = 0.001
     assert abs(score_ab - score_ba) < tolerance, (
@@ -117,4 +126,22 @@ def test_specific_symmetry_case():
     # The model should be symmetric now
     assert abs(score1 - score2) < 0.001, (
         f"Model still asymmetric! {score1:.8f} vs {score2:.8f}"
+    )
+
+
+@pytest.mark.parametrize("name1, name2", JOHN_BUG_TEST_PAIRS)
+def test_john_bug(name1, name2):
+    """
+    Test for the specific bug with "john" names that give abnormally low
+    scores. Identical names should always score > 0.9, regardless of the
+    first name.
+    """
+    score = compare_names(name1, name2)
+    
+    print(f"[JOHN] {name1} <> {name2} -> {score:.6f}")
+    
+    # Identical names should have very high similarity
+    assert score > 0.9, (
+        f"John bug detected! Identical names '{name1}' vs '{name2}' "
+        f"scored only {score:.6f}, expected > 0.9"
     )
