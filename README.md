@@ -91,8 +91,8 @@ namematching/
 │   ├── matcher.py         # Core matching functionality
 │   ├── resources.py       # Resource management
 │   ├── utils.py          # Utility functions
-│   ├── data/             # Pre-trained models and tokenizers
-│   ├── model/            # Model building and training
+│   ├── model/            # Pre-trained models and tokenizers
+│   ├── training/         # Model building and training
 │   ├── metrics/          # Feature extraction
 │   ├── databuild/        # Data generation
 │   └── scraping/         # Data collection tools

@@ -5,22 +5,19 @@
 import os
 import pickle
 from sklearn.metrics import classification_report
-from namematching.model.prepare_data import load_and_prepare_data
-from namematching.model.build_model import build_namematching_model
+from namematching.training.prepare_data import load_and_prepare_data
+from namematching.training.build_model import build_namematching_model
 from namematching.config import CONFIG
 import matplotlib.pyplot as plt
 
-MODEL_PATH = os.path.join(CONFIG.export_dir, "namematching_model.keras")
-TOKENIZER_PATH = os.path.join(CONFIG.export_dir, "char_tokenizer.pkl")
-SCALER_PATH = os.path.join(CONFIG.export_dir, "scaler.pkl")
+MODEL_PATH = os.path.join(CONFIG.model_dir, "namematching_model.keras")
+TOKENIZER_PATH = os.path.join(CONFIG.model_dir, "char_tokenizer.pkl")
+SCALER_PATH = os.path.join(CONFIG.model_dir, "scaler.pkl")
 MAX_LEN = 40
 EMBED_DIM = 32
 
 
 def main():
-    # Create model directory if needed
-    os.makedirs(CONFIG.export_dir, exist_ok=True)
-
     # Load and prepare data
     (
         (train_name1_sequences, train_name2_sequences,
@@ -38,7 +35,6 @@ def main():
         embed_dim=EMBED_DIM,
         num_features=train_features.shape[1],
     )
-
     # Train the model
     training_history = model.fit(
         [train_name1_sequences, train_name2_sequences, train_features],
@@ -58,7 +54,7 @@ def main():
     plt.legend()
     plt.grid()
     plt.tight_layout()
-    plt.savefig(os.path.join(CONFIG.export_dir, "training_accuracy.png"))
+    plt.savefig(os.path.join(CONFIG.model_dir, "training_accuracy.png"))
     plt.close()
 
     # Save the model and preprocessing tools

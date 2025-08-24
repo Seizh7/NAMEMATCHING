@@ -275,30 +275,20 @@ def build_namematching_model(
         name2_input, embedding, first_bilstm, second_bilstm
     )
 
-    # Create symmetric interaction features
-    # Remove asymmetric difference, keep only symmetric operations
+    # Create interaction features
+    difference = Subtract()([name1_encoded, name2_encoded])
     absolute_difference = Add()([
-        ReLU()(Subtract()([name1_encoded, name2_encoded])),
-        ReLU()(Subtract()([name2_encoded, name1_encoded]))
+        ReLU()(difference),
+        ReLU()(Lambda(lambda t: -t)(difference))
     ])
     elem_prod = Multiply()([name1_encoded, name2_encoded])
-    
-    # Add more symmetric features
-    elem_max = Lambda(
-        lambda x: tf.maximum(x[0], x[1])
-    )([name1_encoded, name2_encoded])
-    elem_min = Lambda(
-        lambda x: tf.minimum(x[0], x[1])
-    )([name1_encoded, name2_encoded])
 
-    # Fuse all features (all symmetric operations)
+    # Fuse all features
     fused = Concatenate(name="fusion")([
         name1_encoded,
         name2_encoded,
         absolute_difference,
         elem_prod,
-        elem_max,
-        elem_min,
         features_input
     ])
 

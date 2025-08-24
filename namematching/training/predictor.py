@@ -1,5 +1,5 @@
 import numpy as np
-from namematching.model.prepare_data import char_tokenizer
+from namematching.training.prepare_data import char_tokenizer
 from namematching.metrics.extract_features import extract_individual_features
 
 
