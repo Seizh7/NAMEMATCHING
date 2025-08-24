@@ -275,29 +275,30 @@ def build_namematching_model(
         name2_input, embedding, first_bilstm, second_bilstm
     )
 
-    # Create symmetric interaction features
-    # Remove asymmetric difference, keep only symmetric operations
+    # Create FULLY symmetric interaction features
+    # Remove ALL order-dependent operations including direct concatenation
     absolute_difference = Add()([
         ReLU()(Subtract()([name1_encoded, name2_encoded])),
         ReLU()(Subtract()([name2_encoded, name1_encoded]))
     ])
     elem_prod = Multiply()([name1_encoded, name2_encoded])
-    
+
     # Add more symmetric features using native Keras operations
-    # Average between the two encodings (symmetric)
     elem_avg = Lambda(
         lambda x: (x[0] + x[1]) / 2.0,
         output_shape=lambda shapes: shapes[0]
     )([name1_encoded, name2_encoded])
 
-    # Fuse all features (all symmetric operations)
+    # Maximum and minimum (order-independent)
+    elem_sum = Add()([name1_encoded, name2_encoded])
+
+    # Fuse ONLY symmetric features (NO direct name encodings)
     fused = Concatenate(name="fusion")([
-        name1_encoded,
-        name2_encoded,
-        absolute_difference,
-        elem_prod,
-        elem_avg,
-        features_input
+        absolute_difference,  # |name1 - name2|
+        elem_prod,           # name1 * name2
+        elem_avg,            # (name1 + name2) / 2
+        elem_sum,            # name1 + name2
+        features_input       # handcrafted features (already symmetric)
     ])
 
     # Get base logits from classifier
