@@ -23,17 +23,23 @@ NameMatching is a Python library that uses artificial intelligence to compare an
 
 ## Installation
 
-```bash
-pip install namematching
-```
 
-Or install from source:
+Install from source:
 
 ```bash
 git clone https://github.com/Seizh7/NAMEMATCHING.git
 cd NAMEMATCHING
+python -m venv .venv
+source .venv/bin/activate  # Sur Windows : .venv\Scripts\activate
 pip install -e .
 ```
+
+Or you can include it directly in your project's `requirements.txt`:
+
+```text
+git+https://github.com/Seizh7/NAMEMATCHING.git
+```
+
 
 ## Quick Start
 
@@ -41,7 +47,7 @@ pip install -e .
 from namematching import compare_names
 
 # Simple comparison
-similarity = compare_names("John Smith", "J. Smith")
+similarity = compare_names("Hillary Clinton", "Hillary Rodham Clinton"),
 print(f"Similarity: {similarity:.2f}")  # Output: Similarity: 0.95
 
 # Advanced usage with NameMatcher class

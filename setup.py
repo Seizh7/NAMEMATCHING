@@ -9,7 +9,7 @@ setup(
     version="1.0",
     packages=find_packages(),
     package_data={
-        'namematching': ['data/*'],
+        'namematching': ['data/*', 'model/*'],
     },
     include_package_data=True,
     install_requires=[

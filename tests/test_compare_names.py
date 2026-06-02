@@ -114,15 +114,15 @@ def test_specific_symmetry_case():
     """
     name1 = "michael f bennet"
     name2 = "a mitchell mcconnell"
-    
+
     score1 = compare_names(name1, name2)
     score2 = compare_names(name2, name1)
-    
+
     print("[SPECIFIC] Original problem case:")
     print(f"[SPECIFIC] {name1} -> {name2}: {score1:.8f}")
     print(f"[SPECIFIC] {name2} -> {name1}: {score2:.8f}")
     print(f"[SPECIFIC] Difference: {abs(score1 - score2):.8f}")
-    
+
     # The model should be symmetric now
     assert abs(score1 - score2) < 0.001, (
         f"Model still asymmetric! {score1:.8f} vs {score2:.8f}"
@@ -137,9 +137,9 @@ def test_john_bug(name1, name2):
     first name.
     """
     score = compare_names(name1, name2)
-    
+
     print(f"[JOHN] {name1} <> {name2} -> {score:.6f}")
-    
+
     # Identical names should have very high similarity
     assert score > 0.9, (
         f"John bug detected! Identical names '{name1}' vs '{name2}' "
