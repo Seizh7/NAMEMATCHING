@@ -13,7 +13,10 @@ setup(
     },
     include_package_data=True,
     install_requires=[
-        "tensorflow>=2.10.0",
+        # Apple Silicon (arm64 macOS) → tensorflow-macos
+        "tensorflow-macos>=2.10.0; platform_machine == 'arm64' and sys_platform == 'darwin'",
+        # Tout le reste (Intel Mac, Linux, Windows)
+        "tensorflow>=2.10.0; platform_machine != 'arm64' or sys_platform != 'darwin'",
         "pandas>=1.3.0",
         "numpy>=1.21.0",
         "scikit-learn>=1.0.0",
